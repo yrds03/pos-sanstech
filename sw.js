@@ -1,37 +1,30 @@
-const CACHE_NAME = 'sanstech-pwa-v1';
+const CACHE_NAME = 'sanstech-pwa-v2';
 const urlsToCache = [
     './',
     './index.html',
-    './manifest.json'
+    './manifest.json',
+    './logo.png'
 ];
 
-// Instalasi Service Worker & Menyimpan Cache dasar
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then(cache => {
-                console.log('Opened cache');
                 return cache.addAll(urlsToCache);
             })
     );
 });
 
-// Bypass fetch agar iFrame Google Script tidak terganggu caching
 self.addEventListener('fetch', event => {
     event.respondWith(
         caches.match(event.request)
             .then(response => {
-                // Kembalikan dari cache lokal (untuk HTML & Manifest)
-                if (response) {
-                    return response;
-                }
-                // Izinkan koneksi langsung ke server Google untuk sisanya
+                if (response) return response;
                 return fetch(event.request);
             })
     );
 });
 
-// Update Service worker jika ada versi baru
 self.addEventListener('activate', event => {
     const cacheWhitelist = [CACHE_NAME];
     event.waitUntil(
