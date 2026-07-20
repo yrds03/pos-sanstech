@@ -12,29 +12,116 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #f1f5f9; }
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         iframe { width: 100%; height: 100%; border: none; display: block; }
+
+        /* Desain Tombol Install Mengambang yang Elegan */
+        #install-container {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9999;
+            display: none; /* Sembunyi dari awal, muncul jika HP mendukung */
+            background: white;
+            padding: 12px 20px;
+            border-radius: 50px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
+            border: 1px solid #e2e8f0;
+            align-items: center;
+            gap: 15px;
+            width: 90%;
+            max-width: 350px;
+            justify-content: space-between;
+            animation: slideUp 0.5s ease-out;
+        }
+
+        @keyframes slideUp {
+            from { bottom: -50px; opacity: 0; }
+            to { bottom: 30px; opacity: 1; }
+        }
+
+        .install-text { font-size: 13px; font-weight: 800; color: #1e293b; }
+        
+        #btn-install {
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 50px;
+            font-weight: 900;
+            font-size: 12px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.4);
+            transition: background-color 0.2s;
+        }
+
+        #btn-install:active { background-color: #1d4ed8; }
     </style>
 </head>
 <body>
 
     <!-- PENTING: Ganti link src di bawah dengan LINK GOOGLE SCRIPT ANDA -->
-    <!-- allow="bluetooth; camera" adalah nyawa agar hardware HP bisa diakses! -->
     <iframe 
         src="https://script.google.com/macros/s/AKfycby8YIbvdHIw5c-PBnkxQttcQWtLbzhmeTb0xkxN74oK5tlWGpiRBHxO5vTl6AKL-5Q2/exec" 
         allow="camera; microphone; bluetooth; usb; display-capture" 
         allowfullscreen>
     </iframe>
 
+    <!-- PANEL TOMBOL INSTALL -->
+    <div id="install-container">
+        <div class="install-text">📲 Install ke HP Anda</div>
+        <button id="btn-install">INSTALL</button>
+    </div>
+
     <script>
-        // Mendaftarkan Service Worker agar web bisa di-install ke Homescreen HP
+        // 1. Daftarkan Mesin PWA
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('sw.js')
-                    .then(reg => console.log('PWA Service Worker Sukses Terdaftar!', reg.scope))
-                    .catch(err => console.log('PWA Error:', err));
+                    .then(reg => console.log('SW Terdaftar!'))
+                    .catch(err => console.log('SW Error:', err));
             });
         }
+
+        // 2. Logika Tombol Install Pintar
+        let deferredPrompt;
+        const installContainer = document.getElementById('install-container');
+        const installBtn = document.getElementById('btn-install');
+
+        // Cek: Jika dibuka dari aplikasi yang sudah terinstall, JANGAN munculkan tombol
+        if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
+            installContainer.style.display = 'none';
+        }
+
+        // Tangkap sinyal "Siap Install" dari HP
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault(); // Blokir pop-up bawaan HP yang suka macet
+            deferredPrompt = e; // Tahan izinnya
+            installContainer.style.display = 'flex'; // Munculkan tombol buatan kita
+        });
+
+        // Saat tombol kita diklik
+        installBtn.addEventListener('click', async () => {
+            if (deferredPrompt) {
+                installBtn.innerText = "MEMPROSES...";
+                deferredPrompt.prompt(); // Pancing pop-up instalasi asli
+                const { outcome } = await deferredPrompt.userChoice;
+                
+                if (outcome === 'accepted') {
+                    installContainer.style.display = 'none'; // Langsung lenyapkan jika setuju
+                } else {
+                    installBtn.innerText = "INSTALL"; // Kembalikan teks jika ditolak
+                }
+                deferredPrompt = null;
+            }
+        });
+
+        // Musnahkan tombol selamanya jika instalasi sukses
+        window.addEventListener('appinstalled', () => {
+            installContainer.style.display = 'none';
+            deferredPrompt = null;
+        });
     </script>
 </body>
 </html>
