@@ -11,8 +11,7 @@
     </style>
 </head>
 <body>
-
-    <!-- PENTING: Ganti tulisan GANTI_DENGAN_ID_SCRIPT_ANDA_DI_SINI dengan Link Google Script Anda yang baru di-Deploy! -->
+    <!-- JANGAN LUPA GANTI LINK DI BAWAH INI DENGAN LINK GOOGLE SCRIPT ANDA -->
     <iframe 
         id="app-frame"
         src="https://script.google.com/macros/s/AKfycby8YIbvdHIw5c-PBnkxQttcQWtLbzhmeTb0xkxN74oK5tlWGpiRBHxO5vTl6AKL-5Q2/exec" 
@@ -21,45 +20,55 @@
     </iframe>
 
     <script>
-        // 1. MESIN PWA & INSTALLER SILENT
-        let deferredPrompt;
-        if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+        // Trik rahasia memaksa HP meng-update sistem
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js?v=4');
 
-        // Menangkap sinyal "Bisa Diinstall" dari HP, lalu info ke Google Script
+        let deferredPrompt = null;
+        let isAppReady = false;
+
+        // 1. Menahan Pop-up Atas Bawaan Chrome
         window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
+            e.preventDefault(); // Mencegah banner dari atas turun!
             deferredPrompt = e;
-            const iframe = document.getElementById('app-frame');
-            iframe.contentWindow.postMessage({ action: 'PWA_READY' }, '*');
+            
+            // Jika Google Script sudah bilang "Ready", langsung kirim perintah
+            if (isAppReady) {
+                document.getElementById('app-frame').contentWindow.postMessage({ action: 'PWA_READY' }, '*');
+            }
         });
 
-        // 2. MESIN BLUETOOTH NATIVE (Akan memunculkan jendela "Sandingkan" Android)
+        // 2. Mesin Komunikasi
         let btDevice = null;
         let btCharacteristic = null;
 
         window.addEventListener('message', async (event) => {
             let msg = event.data;
 
-            // Jika tombol Install ditekan
+            // Jika menerima pesan bahwa Google Script sudah selesai Loading
+            if (msg.action === 'APP_READY') {
+                isAppReady = true;
+                if (deferredPrompt) {
+                    event.source.postMessage({ action: 'PWA_READY' }, '*');
+                }
+            }
+
+            // Jika Tombol Install di Google Script ditekan
             if (msg.action === 'DO_INSTALL') {
                 if (deferredPrompt) {
                     deferredPrompt.prompt();
                     const { outcome } = await deferredPrompt.userChoice;
-                    if (outcome === 'accepted') {
-                        event.source.postMessage({ action: 'PWA_INSTALLED' }, '*');
-                    }
+                    if (outcome === 'accepted') event.source.postMessage({ action: 'PWA_INSTALLED' }, '*');
                     deferredPrompt = null;
                 }
             }
 
-            // Jika tombol Connect Bluetooth ditekan
+            // Jika Bluetooth Ditekan
             if (msg.action === 'CONNECT_BT') {
                 try {
                     btDevice = await navigator.bluetooth.requestDevice({
                         acceptAllDevices: true,
                         optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2']
                     });
-                    
                     const server = await btDevice.gatt.connect();
                     const services = await server.getPrimaryServices();
                     const characteristicList = await services[0].getCharacteristics();
@@ -71,7 +80,6 @@
                 }
             } 
             
-            // Jika tombol Print Bluetooth ditekan
             if (msg.action === 'PRINT_BT') {
                 try {
                     if (!btCharacteristic) throw new Error("Printer terputus!");
