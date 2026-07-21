@@ -11,7 +11,7 @@
     </style>
 </head>
 <body>
-    <!-- JANGAN LUPA GANTI LINK DI BAWAH INI DENGAN LINK GOOGLE SCRIPT ANDA -->
+    <!-- PENTING: Paste Link Web App Google Script Anda di bawah ini! -->
     <iframe 
         id="app-frame"
         src="https://script.google.com/macros/s/AKfycby8YIbvdHIw5c-PBnkxQttcQWtLbzhmeTb0xkxN74oK5tlWGpiRBHxO5vTl6AKL-5Q2/exec" 
@@ -20,49 +20,56 @@
     </iframe>
 
     <script>
-        // Trik rahasia memaksa HP meng-update sistem
-        if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js?v=4');
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js?v=5'); // Paksa baca versi 5
+        }
 
         let deferredPrompt = null;
-        let isAppReady = false;
 
-        // 1. Menahan Pop-up Atas Bawaan Chrome
+        // 1. Tangkap Sinyal PWA Chrome
         window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault(); // Mencegah banner dari atas turun!
+            e.preventDefault(); // Matikan banner atas
             deferredPrompt = e;
             
-            // Jika Google Script sudah bilang "Ready", langsung kirim perintah
-            if (isAppReady) {
-                document.getElementById('app-frame').contentWindow.postMessage({ action: 'PWA_READY' }, '*');
-            }
+            // JURUS PING AGRESIF: Tembak Google Script setiap 1 detik agar tombol muncul
+            let pingInterval = setInterval(() => {
+                const iframe = document.getElementById('app-frame');
+                if (iframe && iframe.contentWindow) {
+                    iframe.contentWindow.postMessage({ action: 'PWA_READY' }, '*');
+                }
+            }, 1000);
+
+            // Berhenti nembak setelah 10 detik biar HP tidak berat
+            setTimeout(() => clearInterval(pingInterval), 10000);
         });
 
-        // 2. Mesin Komunikasi
+        // 2. Mesin Bluetooth & Install
         let btDevice = null;
         let btCharacteristic = null;
 
         window.addEventListener('message', async (event) => {
             let msg = event.data;
 
-            // Jika menerima pesan bahwa Google Script sudah selesai Loading
+            // Membalas pesan jika Google Script sudah Loading
             if (msg.action === 'APP_READY') {
-                isAppReady = true;
                 if (deferredPrompt) {
                     event.source.postMessage({ action: 'PWA_READY' }, '*');
                 }
             }
 
-            // Jika Tombol Install di Google Script ditekan
+            // Jika Tombol Install (di bawah Login) ditekan
             if (msg.action === 'DO_INSTALL') {
                 if (deferredPrompt) {
                     deferredPrompt.prompt();
                     const { outcome } = await deferredPrompt.userChoice;
-                    if (outcome === 'accepted') event.source.postMessage({ action: 'PWA_INSTALLED' }, '*');
+                    if (outcome === 'accepted') {
+                        event.source.postMessage({ action: 'PWA_INSTALLED' }, '*');
+                    }
                     deferredPrompt = null;
                 }
             }
 
-            // Jika Bluetooth Ditekan
+            // Jika Tombol Connect BT ditekan (Muncul Jendela Asli Android)
             if (msg.action === 'CONNECT_BT') {
                 try {
                     btDevice = await navigator.bluetooth.requestDevice({
@@ -80,6 +87,7 @@
                 }
             } 
             
+            // Eksekusi Print
             if (msg.action === 'PRINT_BT') {
                 try {
                     if (!btCharacteristic) throw new Error("Printer terputus!");
