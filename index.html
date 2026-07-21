@@ -28,6 +28,8 @@
 <body class="text-slate-800">
 
 <iframe id="print-iframe" style="display:none;"></iframe>
+
+<!-- SISTEM KAMERA TERSEMBUNYI -->
 <input type="file" id="kamera-input" accept="image/*" capture="environment" style="display:none;" onchange="prosesFotoBarcode(event)">
 <input type="file" id="qris-file-input" accept="image/*" style="display:none;" onchange="handleQRISUpload(event)">
 <div id="reader" style="display:none;"></div>
@@ -119,7 +121,7 @@
       <div class="relative"><i class="fa-solid fa-lock absolute left-4 top-4 text-slate-400"></i><input type="password" id="in-pass" class="w-full border border-slate-300 p-3.5 pl-12 rounded-xl focus:border-blue-600 outline-none bg-slate-50 font-bold" placeholder="Password"></div>
       <button type="button" onclick="eksekusiLogin()" id="btn-login" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black text-base rounded-xl py-4 mt-2 shadow-lg transition transform hover:scale-[1.02]">LOGIN SISTEM</button>
       
-      <!-- Tombol Install yang tersembunyi (Akan muncul otomatis seperti F&B) -->
+      <!-- Tombol Install -->
       <div id="btn-install-app" class="hidden w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm rounded-xl py-3 mt-4 shadow-inner transition border border-slate-200 cursor-pointer text-center">
         <i class="fa-solid fa-download mr-2 text-blue-600"></i> Install Aplikasi ke HP
       </div>
@@ -182,7 +184,7 @@
 // ====================================================================
 // CORE API BRIDGE (ENGINE BARU)
 // ====================================================================
-const API_URL = "https://script.google.com/macros/s/AKfycby8YIbvdHIw5c-PBnkxQttcQWtLbzhmeTb0xkxN74oK5tlWGpiRBHxO5vTl6AKL-5Q2/exec"; // <-- WAJIB GANTI INI!
+const API_URL = "https://https://script.google.com/macros/s/AKfycby8YIbvdHIw5c-PBnkxQttcQWtLbzhmeTb0xkxN74oK5tlWGpiRBHxO5vTl6AKL-5Q2/exec"; // JANGAN LUPA GANTI INI NANTI
 
 async function requestAPI(action, payload = {}) {
   try {
@@ -260,7 +262,7 @@ async function cetakStrukBluetooth(teksNota) {
 
 
 // ====================================================================
-// STATE MANAJEMEN DAN UTILITAS
+// STATE MANAJEMEN DAN UTILITAS (YANG SEMPAT HILANG ADA DI SINI)
 // ====================================================================
 let state = { user: "", role: "", cabang: "Pusat", activeMenu: "dashboard", data: { produk: [], pelanggan: [], supplier: [], penjualan: [], penjualan_detail: [], stok: [], keuangan: [], akun: [] }, keranjangPOS: [], keranjangPO: [], metodeBayar: "Tunai", isSO: false };
 let chartDash = null; let chartLaporan = null; let lastInvoice = ""; let lastTotal = 0; let kameraContext = 'pos'; 
@@ -295,6 +297,36 @@ function bukaModalConfirm(judul, pesan, tipeIcon, callbackYa) {
   btnConfirm.onclick = function() { callbackYa(); tutupModal(); }; document.getElementById('custom-modal').classList.replace('hidden','flex');
 }
 function tutupModal() { document.getElementById('custom-modal').classList.replace('flex','hidden'); }
+
+// ====================================================================
+// FUNGSI KAMERA & MASTER DATA YANG SEMPAT HILANG (SUDAH KEMBALI)
+// ====================================================================
+function tambahMasterLokal(namaModul, idList) { 
+  document.getElementById('modal-input-title').innerText = "Tambah " + namaModul; document.getElementById('input-master-value').value = ""; document.getElementById('input-master-target').value = idList; document.getElementById('input-master-name').value = namaModul; document.getElementById('modal-input-master').classList.replace('hidden','flex'); setTimeout(() => document.getElementById('input-master-value').focus(), 100); 
+}
+function simpanMasterLokal() { 
+  let val = document.getElementById('input-master-value').value.trim(); let idList = document.getElementById('input-master-target').value; let namaModul = document.getElementById('input-master-name').value; 
+  if(!val) return showInlineNotif('error', 'Input data tidak boleh kosong!'); 
+  let savedArr = JSON.parse(localStorage.getItem('sanstech_' + idList) || "[]");
+  if(!savedArr.includes(val)) { savedArr.push(val); localStorage.setItem('sanstech_' + idList, JSON.stringify(savedArr)); }
+  document.getElementById(idList).innerHTML += `<li>${val} <span class="text-emerald-500 text-[10px] font-bold bg-emerald-50 px-1 py-0.5 rounded">(Baru)</span></li>`; 
+  showInlineNotif('success', `${namaModul} '${val}' dicatat!`); document.getElementById('modal-input-master').classList.replace('flex','hidden'); 
+}
+
+function bukaKamera(context) { kameraContext = context; document.getElementById('kamera-input').click(); }
+function prosesFotoBarcode(event) { 
+  let file = event.target.files[0]; if (!file) return; 
+  showInlineNotif('info', 'Membaca barcode dari gambar...'); const html5QrCode = new Html5Qrcode("reader"); 
+  html5QrCode.scanFile(file, true).then(decodedText => { 
+    if (kameraContext === 'pos') {
+      let prd = state.data.produk.find(p => String(p.Barcode) === decodedText || String(p.ID_Produk) === decodedText); 
+      if(prd) { eksekusiTambahKeranjang(prd); showInlineNotif('success', prd.Nama_Produk + ' ditambahkan ke keranjang.'); } else { showInlineNotif('error', 'Barcode tidak terdaftar!'); }
+    } else if (kameraContext === 'produk') { document.getElementById('prd-bc').value = decodedText; showInlineNotif('success', 'Barcode berhasil disalin!'); }
+    else if (kameraContext === 'lacak') { document.getElementById('input-lacak-imei').value = decodedText; showInlineNotif('success', 'Melacak...'); lacakImeiBarang(); }
+    else if (kameraContext === 'tf') { document.getElementById('tf-produk').value = decodedText; showInlineNotif('success', 'Produk masuk form transfer!'); }
+    event.target.value = ''; 
+  }).catch(err => { showInlineNotif('error', 'Gagal membaca Barcode. Pastikan gambar fokus!'); event.target.value = ''; }); 
+}
 
 // ====================================================================
 // MODIFIKASI FUNGSI KONEKSI API FETCH
@@ -539,20 +571,19 @@ function toggleMobileMenu() {
   let mSidebar = document.getElementById('mobile-sidebar');
   if(mSidebar.classList.contains('hidden')) {
      mSidebar.classList.remove('hidden');
-     mSidebar.style.display = 'flex'; // Paksa muncul di HP
+     mSidebar.style.display = 'flex'; 
      document.getElementById('mobile-menu-container').innerHTML = document.getElementById('desktop-nav').innerHTML;
      
      let items = document.getElementById('mobile-menu-container').querySelectorAll('.menu-sidebar');
      items.forEach(item => { 
          let originalClick = item.getAttribute('onclick'); 
-         // Hindari penumpukan klik menu
          if(originalClick && !originalClick.includes('toggleMobileMenu')) {
              item.setAttribute('onclick', `toggleMobileMenu(); ${originalClick}`); 
          }
      });
   } else { 
      mSidebar.classList.add('hidden'); 
-     mSidebar.style.display = 'none'; // Paksa hilang saat disilang
+     mSidebar.style.display = 'none'; 
   }
 }
 
