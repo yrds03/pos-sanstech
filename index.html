@@ -5,87 +5,78 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>SANSTECH ERP</title>
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#2563eb">
-    
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #f1f5f9; font-family: sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #f1f5f9; }
         iframe { width: 100%; height: 100%; border: none; display: block; }
-
-        #install-container {
-            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 9999; display: none;
-            background: white; padding: 12px 20px; border-radius: 50px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
-            border: 1px solid #e2e8f0; align-items: center; gap: 15px; width: 90%; max-width: 350px; justify-content: space-between;
-        }
-        .install-text { font-size: 13px; font-weight: 800; color: #1e293b; }
-        #btn-install { background-color: #2563eb; color: white; border: none; padding: 10px 24px; border-radius: 50px; font-weight: 900; font-size: 12px; cursor: pointer; }
     </style>
 </head>
 <body>
 
-    <!-- JANGAN LUPA GANTI LINK SRC DI BAWAH INI DENGAN LINK GOOGLE SCRIPT ANDA -->
+    <!-- PENTING: Ganti tulisan GANTI_DENGAN_ID_SCRIPT_ANDA_DI_SINI dengan Link Google Script Anda yang baru di-Deploy! -->
     <iframe 
+        id="app-frame"
         src="https://script.google.com/macros/s/AKfycby8YIbvdHIw5c-PBnkxQttcQWtLbzhmeTb0xkxN74oK5tlWGpiRBHxO5vTl6AKL-5Q2/exec" 
         allow="camera; microphone; bluetooth; usb; display-capture" 
         allowfullscreen>
     </iframe>
 
-    <div id="install-container">
-        <div class="install-text">📲 Install ke HP Anda</div>
-        <button id="btn-install">INSTALL</button>
-    </div>
-
     <script>
-        // 1. MESIN PWA & INSTALL
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
-        }
-        let deferredPrompt; const installContainer = document.getElementById('install-container'); const installBtn = document.getElementById('btn-install');
-        if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) { installContainer.style.display = 'none'; }
-        window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; installContainer.style.display = 'flex'; });
-        installBtn.addEventListener('click', async () => {
-            if (deferredPrompt) {
-                installBtn.innerText = "MEMPROSES..."; deferredPrompt.prompt();
-                const { outcome } = await deferredPrompt.userChoice;
-                if (outcome === 'accepted') installContainer.style.display = 'none'; else installBtn.innerText = "INSTALL";
-                deferredPrompt = null;
-            }
+        // 1. MESIN PWA & INSTALLER SILENT
+        let deferredPrompt;
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+
+        // Menangkap sinyal "Bisa Diinstall" dari HP, lalu info ke Google Script
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            const iframe = document.getElementById('app-frame');
+            iframe.contentWindow.postMessage({ action: 'PWA_READY' }, '*');
         });
 
-        // =========================================================
-        // 2. MESIN BLUETOOTH THERMAL API (Berjalan di luar kandang Google)
-        // =========================================================
+        // 2. MESIN BLUETOOTH NATIVE (Akan memunculkan jendela "Sandingkan" Android)
         let btDevice = null;
         let btCharacteristic = null;
 
         window.addEventListener('message', async (event) => {
             let msg = event.data;
 
-            // Jika Google Script minta konek Bluetooth
+            // Jika tombol Install ditekan
+            if (msg.action === 'DO_INSTALL') {
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    const { outcome } = await deferredPrompt.userChoice;
+                    if (outcome === 'accepted') {
+                        event.source.postMessage({ action: 'PWA_INSTALLED' }, '*');
+                    }
+                    deferredPrompt = null;
+                }
+            }
+
+            // Jika tombol Connect Bluetooth ditekan
             if (msg.action === 'CONNECT_BT') {
                 try {
                     btDevice = await navigator.bluetooth.requestDevice({
                         acceptAllDevices: true,
                         optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2']
                     });
+                    
                     const server = await btDevice.gatt.connect();
                     const services = await server.getPrimaryServices();
                     const characteristicList = await services[0].getCharacteristics();
                     btCharacteristic = characteristicList.find(c => c.properties.write || c.properties.writeWithoutResponse);
                     
-                    // Balas ke Google Script kalau sukses
                     event.source.postMessage({ action: 'BT_CONNECTED', name: btDevice.name }, '*');
                 } catch (err) {
                     event.source.postMessage({ action: 'BT_ERROR', error: err.message }, '*');
                 }
             } 
             
-            // Jika Google Script mengirim data struk untuk di print
-            else if (msg.action === 'PRINT_BT') {
+            // Jika tombol Print Bluetooth ditekan
+            if (msg.action === 'PRINT_BT') {
                 try {
                     if (!btCharacteristic) throw new Error("Printer terputus!");
                     let encoder = new TextEncoder();
                     let data = encoder.encode(msg.text);
-                    // Print per 20 byte agar Thermal Printer tidak nge-blank
                     for (let i = 0; i < data.length; i += 20) {
                         await btCharacteristic.writeValue(data.slice(i, i + 20));
                     }
