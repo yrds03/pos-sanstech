@@ -1,20 +1,19 @@
 {
   "name": "SANSTECH ERP",
   "short_name": "Sanstech",
-  "description": "Sistem Manajemen Terpadu",
-  "start_url": ".",
+  "description": "Sistem ERP dan POS",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f1f5f9",
   "theme_color": "#2563eb",
-  "orientation": "portrait",
   "icons": [
     {
-      "src": "logo1.png",
+      "src": "https://cdn-icons-png.flaticon.com/512/561/561225.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "logo1.png",
+      "src": "https://cdn-icons-png.flaticon.com/512/561/561225.png",
       "sizes": "512x512",
       "type": "image/png"
     }
