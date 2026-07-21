@@ -184,7 +184,7 @@
 // ====================================================================
 // CORE API BRIDGE (ENGINE BARU)
 // ====================================================================
-const API_URL = "https://script.google.com/macros/s/AKfycby8YIbvdHIw5c-PBnkxQttcQWtLbzhmeTb0xkxN74oK5tlWGpiRBHxO5vTl6AKL-5Q2/exec"; // JANGAN LUPA GANTI INI DENGAN LINK WEB APP ANDA NANTI
+const API_URL = "https://script.google.com/macros/s/AKfycby8YIbvdHIw5c-PBnkxQttcQWtLbzhmeTb0xkxN74oK5tlWGpiRBHxO5vTl6AKL-5Q2/exec"; // <-- WAJIB GANTI INI DENGAN LINK WEB APP ANDA!
 
 async function requestAPI(action, payload = {}) {
   try {
@@ -193,7 +193,8 @@ async function requestAPI(action, payload = {}) {
     });
     return await response.json();
   } catch(err) {
-    console.error(err); showInlineNotif('error', "Koneksi Error ke API Google Sheet!"); return { status: false, msg: err.message };
+    console.error(err); 
+    return { status: false, msg: err.message };
   }
 }
 
@@ -229,7 +230,6 @@ async function connectBluetoothNative() {
   try {
     btDevice = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2'] });
     
-    // Deteksi putus mendadak
     btDevice.addEventListener('gattserverdisconnected', function() {
       btCharacteristic = null;
       let btn = document.getElementById('btn-bt-connect');
@@ -242,7 +242,6 @@ async function connectBluetoothNative() {
     const service = await server.getPrimaryService('000018f0-0000-1000-8000-00805f9b34fb').catch(() => null) || await server.getPrimaryService('e7810a71-73ae-499d-8c15-faa9aef0c3f2');
     btCharacteristic = await service.getCharacteristic('00002af1-0000-1000-8000-00805f9b34fb').catch(() => null) || await service.getCharacteristics().then(chars => chars[0]);
     
-    // Ubah Hijau
     let btn = document.getElementById('btn-bt-connect');
     if(btn) { btn.classList.replace('bg-indigo-500', 'bg-emerald-500'); btn.classList.replace('bg-red-500', 'bg-emerald-500'); btn.classList.replace('hover:bg-indigo-600', 'hover:bg-emerald-600'); }
     document.getElementById('bt-status-text').innerText = "BT KONEK";
@@ -262,21 +261,32 @@ async function cetakStrukBluetooth(teksNota) {
 
 
 // ====================================================================
-// STATE MANAJEMEN DAN UTILITAS 
+// STATE MANAJEMEN DAN UTILITAS (PELINDUNG ANTI-BLANK PUTIH)
 // ====================================================================
-let state = { user: "", role: "", cabang: "Pusat", activeMenu: "dashboard", data: { produk: [], pelanggan: [], supplier: [], penjualan: [], penjualan_detail: [], stok: [], keuangan: [], akun: [] }, keranjangPOS: [], keranjangPO: [], metodeBayar: "Tunai", isSO: false, posTemp: {} };
+let state = { user: "", role: "", cabang: "Pusat", activeMenu: "dashboard", data: {}, keranjangPOS: [], keranjangPO: [], metodeBayar: "Tunai", isSO: false, posTemp: {} };
 let chartDash = null; let chartLaporan = null; let lastInvoice = ""; let lastTotal = 0; let kameraContext = 'pos'; 
 
 const formatRp = (angka) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka||0);
 
+// FUNGSI KUNCI: MENCEGAH LAYAR BLANK KARENA DATA KOSONG/UNDEFINED
+function pastikanDataAman(rawData) {
+    let aman = rawData || {};
+    ['produk','pelanggan','supplier','penjualan','penjualan_detail','stok','keuangan','akun'].forEach(k => {
+        if(!aman[k] || !Array.isArray(aman[k])) aman[k] = [];
+    });
+    return aman;
+}
+
 window.onload = function() {
+  state.data = pastikanDataAman({});
   muatPengaturanLokal();
   let sesi = localStorage.getItem('sanstech_session');
   if(sesi) {
     try {
        let parsed = JSON.parse(sesi); state.user = parsed.user; state.role = parsed.role; state.cabang = parsed.cabang || "Pusat";
        let lastMenu = localStorage.getItem('sanstech_active_menu'); if(lastMenu) state.activeMenu = lastMenu;
-       bukaAppScreen(); syncDataLiveBackground();
+       bukaAppScreen(); 
+       syncDataLiveBackground();
     } catch(e) { document.getElementById('login-screen').classList.replace('hidden', 'flex'); }
   } else { document.getElementById('login-screen').classList.replace('hidden', 'flex'); }
 };
@@ -330,7 +340,7 @@ function prosesFotoBarcode(event) {
 }
 
 // ====================================================================
-// MODIFIKASI FUNGSI KONEKSI API FETCH
+// FUNGSI KONEKSI API FETCH
 // ====================================================================
 async function eksekusiLogin() {
   let u = document.getElementById('in-user').value; let p = document.getElementById('in-pass').value; let errMsg = document.getElementById('login-error-msg');
@@ -343,25 +353,33 @@ async function eksekusiLogin() {
   
   if(res && res.status) {
      localStorage.setItem('sanstech_session', JSON.stringify({user: res.user, role: res.role, cabang: res.cabang}));
-     state.user = res.user; state.role = res.role; state.cabang = res.cabang || "Pusat"; state.data = res.data;
-     bukaAppScreen(); renderModulAktif();
-  } else { errMsg.innerText = res ? res.msg : "Terjadi kesalahan."; errMsg.classList.remove('hidden'); }
+     state.user = res.user; state.role = res.role; state.cabang = res.cabang || "Pusat"; 
+     
+     // Anti-Blank: Pastikan data yang masuk valid
+     if(res.data) { state.data = pastikanDataAman(res.data); }
+     
+     bukaAppScreen(); 
+  } else { errMsg.innerText = res ? res.msg : "Terjadi kesalahan Server API."; errMsg.classList.remove('hidden'); }
 }
 
 async function syncDataLiveBackground() { 
   let el = document.getElementById('sync-status'); if(el) el.innerHTML = '<i class="fa-solid fa-rotate fa-spin text-blue-500"></i> Syncing...'; 
   
   let res = await requestAPI('tarikDataLiveSystem', {role: state.role, cabang: state.cabang});
-  if(res) {
-      state.data = res; 
+  
+  // Anti-Blank: Validasi apakah data yang kembali benar-benar Array Database
+  if(res && !res.msg && (res.produk || res.penjualan || res.pelanggan)) {
+      state.data = pastikanDataAman(res.data ? res.data : res); 
       if(el) el.innerHTML = '<i class="fa-solid fa-cloud text-emerald-500"></i> Synced'; 
       if(state.activeMenu !== 'pos') renderModulAktif(); 
+  } else {
+      if(el) el.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-red-500"></i> Offline'; 
   }
 }
 
 function prosesLogout() { 
   localStorage.removeItem('sanstech_session'); localStorage.removeItem('sanstech_active_menu'); 
-  state.data = { produk: [], pelanggan: [], supplier: [], penjualan: [], penjualan_detail: [], stok: [], keuangan: [], akun: [] }; 
+  state.data = pastikanDataAman({}); 
   document.getElementById('app-screen').classList.replace('flex', 'hidden'); document.getElementById('login-screen').classList.replace('hidden', 'flex'); 
   document.getElementById('in-user').value = ""; document.getElementById('in-pass').value = ""; 
 }
