@@ -316,10 +316,26 @@ function prosesFotoBarcode(event) { let file = event.target.files[0]; if (!file)
 async function eksekusiLogin() {
     let u = document.getElementById('in-user').value; let p = document.getElementById('in-pass').value; let errMsg = document.getElementById('login-error-msg');
     if(!u || !p) { errMsg.innerText = "Username dan Password wajib diisi!"; errMsg.classList.remove('hidden'); return; }
+    
     let loader = document.getElementById('login-loader'); loader.classList.replace('hidden','flex'); errMsg.classList.add('hidden');
     let res = await requestAPI('prosesLogin', {user: u, pass: p});
     loader.classList.replace('flex','hidden');
-    if(res && res.status) { localStorage.setItem('sanstech_session', JSON.stringify({user: res.user, role: res.role, cabang: res.cabang})); state.user = res.user; state.role = res.role; state.cabang = res.cabang || "Pusat"; if(res.data) { state.data = pastikanDataAman(res.data); } bukaAppScreen(); } else { errMsg.innerText = res ? res.msg : "Terjadi kesalahan Server API."; errMsg.classList.remove('hidden'); }
+    
+    if(res && res.status) { 
+        localStorage.setItem('sanstech_session', JSON.stringify({user: res.user, role: res.role, cabang: res.cabang})); 
+        state.user = res.user; state.role = res.role; state.cabang = res.cabang || "Pusat"; 
+        if(res.data) { state.data = pastikanDataAman(res.data); } 
+        bukaAppScreen(); 
+        
+        // ==========================================
+        // FITUR BARU: AUTO-SYNC SETELAH LOGIN MANUAL
+        // ==========================================
+        syncDataLiveBackground();
+        showInlineNotif('info', 'Menyinkronkan data terbaru dari Cloud...');
+        
+    } else { 
+        errMsg.innerText = res ? res.msg : "Terjadi kesalahan Server API."; errMsg.classList.remove('hidden'); 
+    }
 }
 async function syncDataLiveBackground() { 
     let el = document.getElementById('sync-status'); if(el) el.innerHTML = '<i class="fa-solid fa-rotate fa-spin text-blue-500"></i> Syncing...'; 
