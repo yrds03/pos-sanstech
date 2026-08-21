@@ -367,11 +367,20 @@ async function syncDataLiveBackground() {
         state.data = cleanData;
         
         if(el) el.innerHTML = '<i class="fa-solid fa-cloud text-emerald-500"></i> Synced'; 
-        if(state.activeMenu !== 'pos' && state.activeMenu !== 'datamaster' && state.activeMenu !== 'pengaturan') renderModulAktif(); 
+        
+        if(state.activeMenu !== 'pos' && state.activeMenu !== 'datamaster' && state.activeMenu !== 'pengaturan') {
+            renderModulAktif(); 
+        } else if (state.activeMenu === 'pos') {
+            // FITUR BARU: Update list pencarian POS secara live jika sedang terbuka!
+            if(document.getElementById('modal-cari-pos') && !document.getElementById('modal-cari-pos').classList.contains('hidden')) {
+                renderListCariPOS();
+            }
+        }
     } else { 
         if(el) el.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-red-500"></i> Offline'; 
     }
 }
+
 function prosesLogout() { 
     localStorage.removeItem('sanstech_session'); localStorage.removeItem('sanstech_active_menu'); state.data = pastikanDataAman({}); 
     document.getElementById('app-screen').classList.replace('flex', 'hidden'); 
@@ -545,9 +554,50 @@ function renderChartDasbor() { let canvas = document.getElementById('dashChart')
 function viewPOS() { return ` <div class="flex flex-col lg:flex-row gap-4 h-full"> <div class="w-full lg:w-2/3 flex flex-col gap-4"> <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex gap-2"> <div class="relative flex-1"><i class="fa-solid fa-barcode absolute left-4 top-3.5 text-slate-400"></i><input type="text" id="pos-barcode" onkeypress="handleBarcodePOS(event)" class="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 p-3 pl-11 rounded-xl outline-none font-bold text-sm" placeholder="Scan Barcode / ID..." autocomplete="off"></div> <button onclick="bukaKamera('pos')" class="bg-blue-600 text-white w-12 h-12 rounded-xl shadow hover:bg-blue-700 transition flex items-center justify-center"><i class="fa-solid fa-camera text-xl"></i></button> <button onclick="cariManualPOS()" class="bg-orange-500 text-white px-5 rounded-xl font-bold shadow-md hover:bg-orange-600 transition"><i class="fa-solid fa-magnifying-glass"></i> Cari</button> </div> <div id="pos-error" class="hidden text-xs font-bold text-red-500 bg-red-50 p-2 rounded-lg text-center border border-red-100"></div> <div class="bg-white flex-1 rounded-2xl shadow-sm border border-slate-100 flex flex-col overflow-hidden min-h-[300px]"> <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50"><h3 class="font-black text-slate-800 text-sm">Item Keranjang</h3><span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-md font-bold"><span id="pos-jml-item">0</span> Item</span></div> <div id="pos-cart-list" class="flex-1 overflow-y-auto p-2 space-y-2"></div> </div> </div> <div class="w-full lg:w-1/3 flex flex-col gap-4"> <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col h-full relative"> <p class="text-[10px] font-bold text-slate-400 mb-1">PILIH PELANGGAN</p> <select id="pos-pelanggan" class="w-full border border-slate-200 p-3 rounded-xl mb-6 bg-slate-50 font-bold text-sm outline-none focus:border-blue-500"><option value="UMUM">Pelanggan UMUM</option></select> <div class="bg-slate-900 text-white p-5 rounded-xl text-center mb-6 shadow-inner"><div class="flex justify-between text-xs text-slate-400 font-bold mb-1 border-b border-slate-700 pb-2"><span>Subtotal:</span><span id="pos-subtotal-rp">Rp 0</span></div><div class="flex justify-between text-xs text-red-400 font-bold mb-2"><span>Pajak PPN:</span><span id="pos-pajak-rp">+ Rp 0</span></div><p class="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-widest mt-2">Total Tagihan Akhir</p><p class="font-black text-3xl md:text-4xl tracking-tight text-emerald-400" id="pos-total-rp">Rp 0</p></div> <p class="text-[10px] font-bold text-slate-400 mb-2 uppercase">Metode Pembayaran</p> <div class="grid grid-cols-2 gap-2 mb-4"><button onclick="pilihMetodePOS('Tunai')" id="btn-m-Tunai" class="py-2.5 rounded-lg border-2 border-blue-600 bg-blue-50 text-blue-700 font-bold text-xs transition">Tunai</button><button onclick="pilihMetodePOS('QRIS')" id="btn-m-QRIS" class="py-2.5 rounded-lg border-2 border-slate-100 text-slate-500 font-bold text-xs transition">QRIS</button><button onclick="pilihMetodePOS('Transfer')" id="btn-m-Transfer" class="py-2.5 rounded-lg border-2 border-slate-100 text-slate-500 font-bold text-xs transition">Transfer</button><button onclick="pilihMetodePOS('Kredit')" id="btn-m-Kredit" class="py-2.5 rounded-lg border-2 border-slate-100 text-slate-500 font-bold text-xs transition">Kredit / SO</button></div> <button id="btn-show-qris" onclick="tampilkanQrisBayar()" class="hidden w-full border-2 border-emerald-500 text-emerald-600 font-bold py-2.5 rounded-xl mb-3 hover:bg-emerald-50 transition"><i class="fa-solid fa-qrcode mr-2"></i> Tampilkan QRIS Pelanggan</button> <label class="flex items-center gap-2 mb-6 cursor-pointer bg-orange-50 border border-orange-100 p-3 rounded-xl"><input type="checkbox" id="pos-is-so" onchange="state.isSO=this.checked" class="w-4 h-4 rounded text-orange-600"><span class="text-xs font-bold text-orange-700">Tandai sebagai Pesanan (SO)</span></label> <div id="area-bayar" class="mt-auto"><button onclick="prosesCheckoutPOS()" id="btn-checkout" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 rounded-xl shadow-lg transition text-base"><i class="fa-solid fa-check-circle mr-2"></i> BAYAR SEKARANG</button></div> <div id="area-setelah-bayar" class="hidden mt-auto flex-col gap-2"><button onclick="cetakUlangStruk()" class="w-full bg-blue-500 text-white font-black py-3 rounded-xl shadow-md transition hover:bg-blue-600"><i class="fa-solid fa-print mr-2"></i> Cetak Struk</button><button onclick="salinTeksStruk()" class="w-full bg-indigo-50 text-indigo-700 font-black py-3 rounded-xl shadow-md transition hover:bg-indigo-100"><i class="fa-solid fa-copy text-lg mr-2"></i> Salin Struk (Copy API)</button><button onclick="bukaModalWA()" class="w-full bg-emerald-500 text-white font-black py-3 rounded-xl shadow-md transition hover:bg-emerald-600"><i class="fa-brands fa-whatsapp text-lg mr-2"></i> Kirim WhatsApp</button><button onclick="resetKasir()" class="w-full bg-slate-200 text-slate-700 font-black py-3 rounded-xl mt-3 shadow transition hover:bg-slate-300"><i class="fa-solid fa-rotate-right mr-2"></i> Transaksi Baru</button></div> </div> </div> </div> <div id="modal-cari-pos" class="fixed inset-0 bg-black/60 z-50 hidden items-center justify-center p-4"><div class="bg-white rounded-2xl w-full max-w-lg h-[80vh] flex flex-col overflow-hidden shadow-2xl"><div class="p-4 border-b flex justify-between items-center"><h3 class="font-black text-lg">Pilih Produk</h3><button onclick="document.getElementById('modal-cari-pos').classList.add('hidden')" class="text-red-500"><i class="fa-solid fa-xmark text-xl"></i></button></div><div class="p-4"><input type="text" id="pos-cari-input" onkeyup="renderListCariPOS()" class="w-full border p-3 rounded-xl font-bold bg-slate-50 outline-none focus:border-blue-500" placeholder="Ketik nama produk..."></div><div id="pos-hasil-cari" class="flex-1 overflow-y-auto p-2 space-y-2"></div></div></div> `; }
 function setPilihanPelanggan() { if(!document.getElementById('pos-pelanggan')) return; let html = `<option value="UMUM">Pelanggan UMUM</option>`; if(state.data.pelanggan) { state.data.pelanggan.forEach(p => { html += `<option value="${p.ID_Pelanggan}">${p.Nama_Pelanggan}</option>`; }); } document.getElementById('pos-pelanggan').innerHTML = html; }
 function pilihMetodePOS(m) { state.metodeBayar = m; ['Tunai','QRIS','Transfer','Kredit'].forEach(x => { let b = document.getElementById('btn-m-'+x); if(b) b.className = "py-2.5 rounded-lg border-2 border-slate-100 text-slate-500 font-bold text-xs transition"; }); let sel = document.getElementById('btn-m-'+m); if(sel) sel.className = "py-2.5 rounded-lg border-2 border-blue-600 bg-blue-50 text-blue-700 font-bold text-xs transition"; if (m === 'QRIS') { document.getElementById('btn-show-qris').classList.remove('hidden'); } else { document.getElementById('btn-show-qris').classList.add('hidden'); } }
-function handleBarcodePOS(e) { if(e.key === "Enter") { let val = document.getElementById('pos-barcode').value.trim(); if(!val) return; let prd = state.data.produk.find(p => String(p.Barcode) === val || String(p.ID_Produk) === val); let errEl = document.getElementById('pos-error'); if(prd) { errEl.classList.add('hidden'); eksekusiTambahKeranjang(prd); } else { errEl.innerText = "Barcode tidak ditemukan!"; errEl.classList.remove('hidden'); } document.getElementById('pos-barcode').value = ""; } }
+function handleBarcodePOS(e) { 
+    if(e.key === "Enter") { 
+        let val = document.getElementById('pos-barcode').value.trim(); 
+        if(!val) return; 
+        
+        // Cari produk, jika Superadmin mungkin ada duplikat cabang, utamakan yang stoknya > 0
+        let prdList = state.data.produk.filter(p => String(p.Barcode) === val || String(p.ID_Produk) === val); 
+        let prd = null;
+        if(prdList.length > 0) prd = prdList.find(p => parseInt(p.Stok_Saat_Ini) > 0) || prdList[0];
+
+        let errEl = document.getElementById('pos-error'); 
+        if(prd) { 
+            errEl.classList.add('hidden'); 
+            eksekusiTambahKeranjang(prd); 
+        } else { 
+            errEl.innerText = "Barcode tidak ditemukan atau Stok Kosong!"; 
+            errEl.classList.remove('hidden'); 
+        } 
+        document.getElementById('pos-barcode').value = ""; 
+    } 
+}
+
 function cariManualPOS() { document.getElementById('modal-cari-pos').classList.remove('hidden'); renderListCariPOS(); }
-function renderListCariPOS() { let val = document.getElementById('pos-cari-input').value.toLowerCase(); let html = ""; state.data.produk.forEach(p => { if(p.Nama_Produk.toLowerCase().includes(val) || String(p.ID_Produk).toLowerCase().includes(val)) { let disabled = (!state.isSO && parseInt(p.Stok_Saat_Ini) <= 0) ? "opacity-50 pointer-events-none" : ""; let stokTeks = (parseInt(p.Stok_Saat_Ini) <= 0) ? '<span class="text-red-500">Habis</span>' : p.Stok_Saat_Ini; html += `<div onclick="eksekusiTambahKeranjangDariManual('${p.ID_Produk}')" class="p-3 border rounded-xl flex justify-between items-center cursor-pointer hover:bg-blue-50 transition ${disabled}"><div class="flex-1"><p class="font-bold text-sm text-slate-800">${p.Nama_Produk}</p><p class="text-[10px] font-bold text-slate-500">Stok: ${stokTeks}</p></div><div class="font-black text-blue-600">${formatRp(p.Harga_Jual)}</div></div>`; } }); document.getElementById('pos-hasil-cari').innerHTML = html; }
+
+function renderListCariPOS() { 
+    let val = document.getElementById('pos-cari-input').value.toLowerCase(); 
+    let html = ""; 
+    state.data.produk.forEach(p => { 
+        // PERBAIKAN: Ubah jadi String() dulu agar tidak error kalau nama produk berupa angka
+        let nm = String(p.Nama_Produk || "").toLowerCase();
+        let id = String(p.ID_Produk || "").toLowerCase();
+        let bc = String(p.Barcode || "").toLowerCase();
+
+        if(nm.includes(val) || id.includes(val) || bc.includes(val)) { 
+            let disabled = (!state.isSO && parseInt(p.Stok_Saat_Ini) <= 0) ? "opacity-50 pointer-events-none" : ""; 
+            let stokTeks = (parseInt(p.Stok_Saat_Ini) <= 0) ? '<span class="text-red-500">Habis</span>' : p.Stok_Saat_Ini; 
+            // Tampilkan badge cabang jika yang login adalah Superadmin
+            let badgeCabang = String(state.role).toUpperCase().includes('SUPERADMIN') ? `<span class="text-[8px] bg-blue-100 text-blue-700 px-1 py-0.5 rounded ml-1">${p.Cabang||'Pusat'}</span>` : '';
+            
+            html += `<div onclick="eksekusiTambahKeranjangDariManual('${p.ID_Produk}')" class="p-3 border rounded-xl flex justify-between items-center cursor-pointer hover:bg-blue-50 transition ${disabled}"><div class="flex-1"><p class="font-bold text-sm text-slate-800">${p.Nama_Produk} ${badgeCabang}</p><p class="text-[10px] font-bold text-slate-500">Stok: ${stokTeks}</p></div><div class="font-black text-blue-600">${formatRp(p.Harga_Jual)}</div></div>`; 
+        } 
+    }); 
+    document.getElementById('pos-hasil-cari').innerHTML = html; 
+}
 function eksekusiTambahKeranjangDariManual(id) { let prd = state.data.produk.find(p => String(p.ID_Produk) === id); if(prd) eksekusiTambahKeranjang(prd); document.getElementById('modal-cari-pos').classList.add('hidden'); }
 function eksekusiTambahKeranjang(prd) { 
     let idx = state.keranjangPOS.findIndex(x => String(x.id_produk) === String(prd.ID_Produk)); 
