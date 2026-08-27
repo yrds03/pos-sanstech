@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sanstech-pwa-v9';
+const CACHE_NAME = 'sanstech-pwa-v10';
 const urlsToCache = [
     './',
     './index.html',
