@@ -515,47 +515,94 @@ async function eksekusiLogin() {
     }
 }
 async function syncDataLiveBackground() { 
+    if (isSyncing) return; // Cegah tumpukan sync
+    isSyncing = true;
+    
     let el = document.getElementById('sync-status'); 
     if(el) el.innerHTML = '<i class="fa-solid fa-rotate fa-spin text-blue-500"></i> Syncing...'; 
     
-    let resSetting = await requestAPIWithAuth('tarikPengaturan', {});
-    if(resSetting && resSetting.status && resSetting.data) {
-        for(let key in resSetting.data) { 
-            localStorage.setItem(key, resSetting.data[key]); 
-        }
-        muatPengaturanLokal();
-        if(state.activeMenu === 'datamaster') renderModulAktif();
-    }
-
-    let res = await requestAPIWithAuth('tarikDataLiveSystem', {role: state.role, cabang: state.cabang});
-    if(res && !res.msg && (res.produk || res.penjualan || res.pelanggan)) { 
-        let cleanData = pastikanDataAman(res.data ? res.data : res); 
-        
-        let roleNorm = String(state.role).toUpperCase().replace(/\s+/g, '');
-        let myCab = String(state.cabang).toUpperCase().trim();
-        if (roleNorm !== 'SUPERADMIN') {
-            let sFilter = (arr) => arr.filter(item => String(item.Cabang || 'Pusat').toUpperCase().trim() === myCab);
-            cleanData.produk = sFilter(cleanData.produk);
-            cleanData.penjualan = sFilter(cleanData.penjualan);
-            cleanData.penjualan_detail = sFilter(cleanData.penjualan_detail);
-            cleanData.stok = sFilter(cleanData.stok);
-            cleanData.keuangan = sFilter(cleanData.keuangan);
-        }
-        
-        state.data = cleanData;
-        
-        if(el) el.innerHTML = '<i class="fa-solid fa-cloud text-emerald-500"></i> Otomatis'; 
-        
-        if(state.activeMenu !== 'pos' && state.activeMenu !== 'datamaster' && state.activeMenu !== 'pengaturan') {
-            renderModulAktif(); 
-        } else if (state.activeMenu === 'pos') {
-            if(document.getElementById('modal-cari-pos') && !document.getElementById('modal-cari-pos').classList.contains('hidden')) {
-                renderListCariPOS();
+    try {
+        let resSetting = await requestAPIWithAuth('tarikPengaturan', {});
+        if(resSetting && resSetting.status && resSetting.data) {
+            for(let key in resSetting.data) { localStorage.setItem(key, resSetting.data[key]); }
+            muatPengaturanLokal();
+            
+            // Cegah reset saat sedang mengetik inputan Data Master
+            let modalMaster = document.getElementById('modal-input-master');
+            if(state.activeMenu === 'datamaster' && (!modalMaster || modalMaster.classList.contains('hidden'))) {
+                renderModulAktif();
             }
         }
-    } else { 
-        if(el) el.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-red-500"></i> Gagal Sync'; 
-        if(res && res.msg && !res.msg.includes('Sesi tidak valid')) showInlineNotif('error', res.msg);
+
+        let res = await requestAPIWithAuth('tarikDataLiveSystem', {role: state.role, cabang: state.cabang});
+        if(res && !res.msg && (res.produk || res.penjualan || res.pelanggan)) { 
+            let cleanData = pastikanDataAman(res.data ? res.data : res); 
+            
+            let roleNorm = String(state.role).toUpperCase().replace(/\s+/g, '');
+            let myCab = String(state.cabang).toUpperCase().trim();
+            if (roleNorm !== 'SUPERADMIN') {
+                let sFilter = (arr) => arr.filter(item => String(item.Cabang || 'Pusat').toUpperCase().trim() === myCab);
+                cleanData.produk = sFilter(cleanData.produk);
+                cleanData.penjualan = sFilter(cleanData.penjualan);
+                cleanData.penjualan_detail = sFilter(cleanData.penjualan_detail);
+                cleanData.stok = sFilter(cleanData.stok);
+                cleanData.keuangan = sFilter(cleanData.keuangan);
+            }
+            
+            state.data = cleanData;
+            
+            if(el) el.innerHTML = '<i class="fa-solid fa-cloud text-emerald-500"></i> Otomatis'; 
+            
+            // ---> PERBAIKAN BUG: Update layar sebagian saja agar Form Inputan tidak hilang <---
+            switch(state.activeMenu) {
+                case 'dashboard':
+                    document.getElementById('main-content-area').innerHTML = viewDashboard();
+                    renderChartDasbor();
+                    break;
+                case 'pos':
+                    if(document.getElementById('modal-cari-pos') && !document.getElementById('modal-cari-pos').classList.contains('hidden')) {
+                        renderListCariPOS();
+                    }
+                    break;
+                case 'penjualan':
+                    filterRiwayat(); // Hanya merefresh isi tabel
+                    renderTabelSO();
+                    break;
+                case 'produk':
+                    filterProdukUI(); // Hanya merefresh isi tabel
+                    break;
+                case 'pelanggan':
+                    filterPelangganUI(); // Hanya merefresh isi tabel
+                    break;
+                case 'supplier':
+                    filterSupplierUI(); // Hanya merefresh isi tabel
+                    break;
+                case 'pembelian':
+                    renderRiwayatPO(); // Hanya merefresh isi tabel history
+                    break;
+                case 'laporan':
+                    renderChartLaporan(); // Hanya merefresh angka laporan
+                    break;
+                case 'keuangan':
+                    filterKeuanganUI(); // Hanya merefresh isi tabel
+                    break;
+                case 'stok':
+                    // KHUSUS STOK: Jangan refresh jika user sedang ngetik di tab Opname / Lacak / Transfer
+                    let isOpname = document.getElementById('stok-opname') && !document.getElementById('stok-opname').classList.contains('hidden');
+                    let isTransfer = document.getElementById('stok-transfer') && !document.getElementById('stok-transfer').classList.contains('hidden');
+                    let isLacak = document.getElementById('stok-lacak') && !document.getElementById('stok-lacak').classList.contains('hidden');
+                    if (!isOpname && !isTransfer && !isLacak) {
+                        filterStokUI();
+                    }
+                    break;
+            }
+            
+        } else { 
+            if(el) el.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-red-500"></i> Gagal Sync'; 
+            if(res && res.msg && !res.msg.includes('Sesi tidak valid')) showInlineNotif('error', res.msg);
+        }
+    } finally {
+        isSyncing = false; 
     }
 }
 
