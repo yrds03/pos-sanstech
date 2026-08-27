@@ -106,6 +106,16 @@
     <div class="w-16 h-16 mx-auto bg-blue-600 text-white rounded-2xl flex items-center justify-center mb-4 shadow-lg"><span class="font-black text-4xl">S</span></div>
     <h1 class="text-2xl font-black text-center text-slate-800 tracking-tight">SANSTECH ERP</h1>
     <p class="text-xs text-center text-slate-400 mb-6 font-bold tracking-widest">SISTEM MANAJEMEN CLOUD</p>
+    
+    <!-- NOTIFIKASI UPDATE PWA -->
+    <div id="update-notif" class="hidden bg-blue-50 border border-blue-200 text-blue-700 p-4 rounded-xl mb-4 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <i class="fa-solid fa-circle-update text-xl"></i>
+        <span class="font-bold text-sm">Update baru tersedia! Segera perbarui aplikasi.</span>
+      </div>
+      <button id="btn-update-app" onclick="applyUpdate()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-lg text-sm transition">Update Sekarang</button>
+    </div>
+
     <div id="login-error-msg" class="hidden bg-red-50 text-red-500 text-xs font-bold p-3 rounded-xl mb-4 text-center border border-red-100"></div>
     <div class="space-y-4" onkeydown="if(event.key === 'Enter') eksekusiLogin()">
       <div class="relative"><i class="fa-solid fa-user absolute left-4 top-4 text-slate-400"></i><input type="text" id="in-user" class="w-full border border-slate-300 p-3.5 pl-12 rounded-xl focus:border-blue-600 outline-none bg-slate-50 font-bold" placeholder="Username" autocomplete="off"></div>
@@ -151,7 +161,8 @@
       </div>
       <div class="flex items-center gap-2 md:gap-3">
         <button id="btn-bt-connect" onclick="connectBluetoothNative()" class="text-[10px] md:text-xs font-bold text-white bg-indigo-500 px-3 py-1.5 rounded-md shadow hover:bg-indigo-600 transition flex items-center gap-1.5"><i class="fa-brands fa-bluetooth"></i> <span id="bt-status-text" class="hidden sm:inline">Connect BT</span></button>
-        <span id="sync-status" class="text-[10px] md:text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-md cursor-pointer hover:bg-slate-200 transition flex items-center gap-1.5" onclick="syncDataLiveBackground()"><i class="fa-solid fa-cloud"></i> <span class="hidden sm:inline">Synced</span></span>
+        <!-- Tombol sync manual dihilangkan, diganti dengan ikon status -->
+        <span id="sync-status" class="text-[10px] md:text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-md flex items-center gap-1.5"><i class="fa-solid fa-cloud"></i> <span class="hidden sm:inline">Otomatis</span></span>
       </div>
     </header>
     <div id="inline-global-notif" class="hidden mx-6 mt-4 p-3 rounded-xl text-sm font-bold flex items-center justify-between shadow-sm"><div class="flex items-center gap-2"><i id="ign-icon"></i> <span id="ign-text"></span></div><button onclick="document.getElementById('inline-global-notif').classList.add('hidden')"><i class="fa-solid fa-xmark"></i></button></div>
@@ -178,7 +189,6 @@ async function requestAPI(action, payload = {}) {
             method: "POST", mode: "cors", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ action: action, payload: payload })
         });
         let result = await response.json();
-        // Jika sesi tidak valid, logout otomatis
         if (result && result.msg && result.msg.includes('Sesi tidak valid')) {
             showInlineNotif('error', 'Sesi Anda kadaluarsa. Silakan login ulang.');
             setTimeout(prosesLogout, 2000);
@@ -193,14 +203,11 @@ async function requestAPI(action, payload = {}) {
 // FUNGSI REQUEST DENGAN TOKEN OTOMATIS
 // ====================================================================
 async function requestAPIWithAuth(action, payload = {}) {
-    // Jangan tambahkan token untuk login
     if (action === 'prosesLogin') {
         return await requestAPI(action, payload);
     }
-    
     let token = state.token || '';
     let user = state.user || '';
-    
     if (!token) {
         let sesi = localStorage.getItem('sanstech_session');
         if (sesi) {
@@ -211,15 +218,12 @@ async function requestAPIWithAuth(action, payload = {}) {
             } catch(e) {}
         }
     }
-    
     if (!token || !user) {
         showInlineNotif('error', 'Sesi tidak valid. Silakan login ulang.');
         return { status: false, msg: 'Sesi tidak valid' };
     }
-    
     payload.token = token;
     payload.user = user;
-    
     return await requestAPI(action, payload);
 }
 
@@ -248,7 +252,8 @@ let state = {
     keranjangPO: [], 
     metodeBayar: "Tunai", 
     isSO: false, 
-    posTemp: {} 
+    posTemp: {},
+    syncInterval: null
 };
 let chartDash = null; let chartLaporan = null; let lastInvoice = ""; let lastTotal = 0; let kameraContext = 'pos'; 
 
@@ -268,9 +273,54 @@ function pastikanDataAman(rawData) {
     return aman;
 }
 
+// ====================================================================
+// PWA UPDATE CHECK
+// ====================================================================
+function cekUpdatePWA() {
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js?v=9')
+            .then(registration => {
+                registration.addEventListener('updatefound', () => {
+                    const newWorker = registration.installing;
+                    newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            document.getElementById('update-notif').classList.remove('hidden');
+                        }
+                    });
+                });
+            })
+            .catch(err => console.log('SW registration failed: ', err));
+    }
+}
+
+function applyUpdate() {
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then(registration => {
+            if (registration.waiting) {
+                registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                registration.waiting.addEventListener('statechange', () => {
+                    if (registration.waiting.state === 'activated') {
+                        window.location.reload();
+                    }
+                });
+            } else {
+                window.location.reload();
+            }
+        });
+    } else {
+        window.location.reload();
+    }
+}
+
+// Auto reload saat service worker mengontrol halaman
+navigator.serviceWorker.addEventListener('controllerchange', () => {
+    window.location.reload();
+});
+
 window.onload = function() {
     state.data = pastikanDataAman({});
     muatPengaturanLokal();
+    cekUpdatePWA();
     let sesi = localStorage.getItem('sanstech_session');
     if(sesi) {
         try {
@@ -282,7 +332,6 @@ window.onload = function() {
             let lastMenu = localStorage.getItem('sanstech_active_menu'); 
             if(lastMenu) state.activeMenu = lastMenu;
             bukaAppScreen(); 
-            syncDataLiveBackground();
         } catch(e) { document.getElementById('login-screen').classList.replace('hidden', 'flex'); }
     } else { document.getElementById('login-screen').classList.replace('hidden', 'flex'); }
 };
@@ -459,7 +508,7 @@ async function syncDataLiveBackground() {
         
         state.data = cleanData;
         
-        if(el) el.innerHTML = '<i class="fa-solid fa-cloud text-emerald-500"></i> Synced'; 
+        if(el) el.innerHTML = '<i class="fa-solid fa-cloud text-emerald-500"></i> Otomatis'; 
         
         if(state.activeMenu !== 'pos' && state.activeMenu !== 'datamaster' && state.activeMenu !== 'pengaturan') {
             renderModulAktif(); 
@@ -469,12 +518,16 @@ async function syncDataLiveBackground() {
             }
         }
     } else { 
-        if(el) el.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-red-500"></i> Offline'; 
+        if(el) el.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-red-500"></i> Gagal Sync'; 
         if(res && res.msg && !res.msg.includes('Sesi tidak valid')) showInlineNotif('error', res.msg);
     }
 }
 
 function prosesLogout() { 
+    if (state.syncInterval) {
+        clearInterval(state.syncInterval);
+        state.syncInterval = null;
+    }
     localStorage.removeItem('sanstech_session'); 
     localStorage.removeItem('sanstech_active_menu'); 
     state.data = pastikanDataAman({}); 
@@ -569,6 +622,9 @@ function bukaAppScreen() {
     document.getElementById('ui-user').innerText = state.user; 
     document.getElementById('ui-role').innerText = state.role + " (" + state.cabang + ")"; 
     navigasi(state.activeMenu); 
+    syncDataLiveBackground();
+    if (state.syncInterval) clearInterval(state.syncInterval);
+    state.syncInterval = setInterval(syncDataLiveBackground, 60000);
 }
 
 function toggleMobileMenu() {
@@ -751,7 +807,6 @@ async function prosesCheckoutPOS() {
         showInlineNotif('success', `Berhasil! Nota: ${res.invoice}`); lastInvoice = res.invoice; lastTotal = totalNominal; 
         let now = new Date(); let localTime = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().substring(0, 19).replace('T', ' '); 
         state.data.penjualan.push({ ID_Invoice: res.invoice, Waktu: localTime, ID_Pelanggan: plgId || "UMUM", Total_Akhir: totalNominal, Metode_Pembayaran: state.metodeBayar, Status: state.isSO ? 'SO/PESANAN' : 'LUNAS', Kasir: state.user, Cabang: state.cabang }); 
-        // Tambahkan detail ke state.data
         state.keranjangPOS.forEach(k => {
             state.data.penjualan_detail.push({
                 ID_Detail: "DET" + Math.floor(Math.random() * 100000),
