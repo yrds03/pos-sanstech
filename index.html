@@ -105,16 +105,16 @@
    </div>
 </div>
 
-<!-- MODAL UPDATE PWA SPESIAL -->
-<div id="modal-update-pwa" class="fixed inset-0 bg-slate-900/90 z-[99999] hidden items-center justify-center p-4 backdrop-blur-sm transition-all">
-  <div class="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 text-center relative overflow-hidden animate-pulse-once">
-    <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500"></div>
-    <div class="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-5 shadow-inner">
+<!-- MODAL UPDATE PWA SPESIAL (STYLE MAULANA) -->
+<div id="modal-update-pwa" class="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[99999] hidden items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+  <div class="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 text-center relative overflow-hidden transform scale-95 transition-transform duration-300">
+    <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-rose-500"></div>
+    <div class="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-5 shadow-inner">
       <i class="fa-solid fa-cloud-arrow-down animate-bounce"></i>
     </div>
-    <h3 class="font-black text-2xl mb-2 text-slate-800 tracking-tight">Update Tersedia!</h3>
-    <p class="text-sm text-slate-500 mb-6 font-medium">Versi terbaru aplikasi SANSTECH sudah siap. Update sekarang untuk mendapatkan fitur terbaru dan perbaikan sistem tanpa perlu hapus cache manual.</p>
-    <button id="btn-eksekusi-update" onclick="applyUpdate()" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black py-4 rounded-xl shadow-lg transition transform hover:scale-[1.02] flex items-center justify-center gap-2 text-lg">
+    <h3 class="font-black text-2xl mb-2 text-gray-800 tracking-tight">Update Tersedia!</h3>
+    <p class="text-sm text-gray-500 mb-6 font-medium">Versi terbaru aplikasi SANSTECH sudah siap. Update sekarang untuk mendapatkan fitur terbaru dan perbaikan sistem tanpa perlu hapus cache manual.</p>
+    <button id="btn-eksekusi-update" onclick="applyUpdate()" class="w-full bg-slate-900 hover:bg-black text-white font-black py-4 rounded-xl shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2 text-lg">
       <i class="fa-solid fa-arrows-rotate"></i> UPDATE SEKARANG
     </button>
   </div>
@@ -311,8 +311,15 @@ function cekUpdatePWA() {
                     const newWorker = registration.installing;
                     newWorker.addEventListener('statechange', () => {
                         if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                            // Tampilkan Pop-Up Spesial (bukan lagi notif inline)
-                            document.getElementById('modal-update-pwa').classList.replace('hidden', 'flex');
+                            // Tampilkan Pop-Up Spesial dengan Animasi ala Maulana POS
+                            let mod = document.getElementById('modal-update-pwa');
+                            if(mod) {
+                                mod.classList.replace('hidden', 'flex');
+                                setTimeout(() => {
+                                    mod.classList.remove('opacity-0');
+                                    mod.querySelector('.transform').classList.remove('scale-95');
+                                }, 50);
+                            }
                         }
                     });
                 });
