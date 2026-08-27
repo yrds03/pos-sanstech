@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sanstech-erp-v11'; // Ganti versi jika ada update besar
+const CACHE_NAME = 'sanstech-erp-v12'; // Ganti versi jika ada update besar
 const urlsToCache = [
   '/',
   '/index.html',
