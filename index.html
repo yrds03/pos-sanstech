@@ -276,7 +276,7 @@ let state = {
     posTemp: {},
     syncInterval: null
 };
-let chartDash = null; let chartLaporan = null; let lastInvoice = ""; let lastTotal = 0; let kameraContext = 'pos'; 
+let chartDash = null; let chartLaporan = null; let lastInvoice = ""; let lastTotal = 0; let kameraContext = 'pos'; let isSyncing = false; 
 
 const formatRp = (angka) => {
     let num = Number(angka) || 0;
@@ -285,6 +285,8 @@ const formatRp = (angka) => {
         maximumFractionDigits: 2 
     });
 };
+function formatInputRibuan(input) { let val = input.value.replace(/[^0-9]/g, ''); input.value = val ? parseInt(val, 10).toLocaleString('id-ID') : ''; }
+const parseAngka = (val) => parseFloat(String(val).replace(/[^0-9]/g, '')) || 0;
 
 function pastikanDataAman(rawData) {
     let aman = rawData || {};
@@ -546,9 +548,11 @@ async function syncDataLiveBackground() {
             }
         }
 
-        let res = await requestAPIWithAuth('tarikDataLiveSystem', {role: state.role, cabang: state.cabang});
-        if(res && !res.msg && (res.produk || res.penjualan || res.pelanggan)) { 
-            let cleanData = pastikanDataAman(res.data ? res.data : res); 
+        // Tambahkan _t timestamp anti-cache & perbaiki logika baca data
+        let res = await requestAPIWithAuth('tarikDataLiveSystem', {role: state.role, cabang: state.cabang, _t: new Date().getTime()});
+        let cekData = res.data ? res.data : res;
+        if(res && !res.msg && (cekData.produk || cekData.penjualan || cekData.pelanggan || cekData.stok)) { 
+            let cleanData = pastikanDataAman(cekData); 
             
             let roleNorm = String(state.role).toUpperCase().replace(/\s+/g, '');
             let myCab = String(state.cabang).toUpperCase().trim();
@@ -803,7 +807,7 @@ function renderChartDasbor() { let canvas = document.getElementById('dashChart')
 // ====================================================================
 // VIEW & FUNGSI: POS KASIR (hanya bagian yang berubah)
 // ====================================================================
-function viewPOS() { return ` <div class="flex flex-col lg:flex-row gap-4 h-full"> <div class="w-full lg:w-2/3 flex flex-col gap-4"> <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex gap-2"> <div class="relative flex-1"><i class="fa-solid fa-barcode absolute left-4 top-3.5 text-slate-400"></i><input type="text" id="pos-barcode" onkeypress="handleBarcodePOS(event)" class="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 p-3 pl-11 rounded-xl outline-none font-bold text-sm" placeholder="Scan Barcode / ID..." autocomplete="off"></div> <button onclick="bukaKamera('pos')" class="bg-blue-600 text-white w-12 h-12 rounded-xl shadow hover:bg-blue-700 transition flex items-center justify-center"><i class="fa-solid fa-camera text-xl"></i></button> <button onclick="cariManualPOS()" class="bg-orange-500 text-white px-5 rounded-xl font-bold shadow-md hover:bg-orange-600 transition"><i class="fa-solid fa-magnifying-glass"></i> Cari</button> </div> <div id="pos-error" class="hidden text-xs font-bold text-red-500 bg-red-50 p-2 rounded-lg text-center border border-red-100"></div> <div class="bg-white flex-1 rounded-2xl shadow-sm border border-slate-100 flex flex-col overflow-hidden min-h-[300px]"> <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50"><h3 class="font-black text-slate-800 text-sm">Item Keranjang</h3><span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-md font-bold"><span id="pos-jml-item">0</span> Item</span></div> <div id="pos-cart-list" class="flex-1 overflow-y-auto p-2 space-y-2"></div> </div> </div> <div class="w-full lg:w-1/3 flex flex-col gap-4"> <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col h-full relative"> <p class="text-[10px] font-bold text-slate-400 mb-1">PILIH PELANGGAN</p> <select id="pos-pelanggan" class="w-full border border-slate-200 p-3 rounded-xl mb-6 bg-slate-50 font-bold text-sm outline-none focus:border-blue-500"><option value="UMUM">Pelanggan UMUM</option></select> <div class="bg-slate-900 text-white p-5 rounded-xl text-center mb-6 shadow-inner"><div class="flex justify-between text-xs text-slate-400 font-bold mb-1 border-b border-slate-700 pb-2 items-center"><span>Subtotal:</span><span id="pos-subtotal-rp">Rp 0</span></div><div class="flex justify-between items-center text-xs text-orange-400 font-bold mb-1 border-b border-slate-700 pb-2 pt-1"><span>Diskon (Rp):</span><input type="number" id="pos-input-diskon" value="0" min="0" onkeyup="renderKeranjangPOS()" onchange="renderKeranjangPOS()" class="w-28 bg-slate-800 border border-slate-600 focus:border-orange-500 text-right p-1.5 rounded outline-none text-orange-400 font-black"></div><div class="flex justify-between text-xs text-red-400 font-bold mb-2 pt-1 items-center"><span>Pajak PPN:</span><span id="pos-pajak-rp">+ Rp 0</span></div><p class="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-widest mt-2">Total Tagihan Akhir</p><p class="font-black text-3xl md:text-4xl tracking-tight text-emerald-400" id="pos-total-rp">Rp 0</p></div> <p class="text-[10px] font-bold text-slate-400 mb-2 uppercase">Metode Pembayaran</p> <div class="grid grid-cols-2 gap-2 mb-4"><button onclick="pilihMetodePOS('Tunai')" id="btn-m-Tunai" class="py-2.5 rounded-lg border-2 border-blue-600 bg-blue-50 text-blue-700 font-bold text-xs transition">Tunai</button><button onclick="pilihMetodePOS('QRIS')" id="btn-m-QRIS" class="py-2.5 rounded-lg border-2 border-slate-100 text-slate-500 font-bold text-xs transition">QRIS</button><button onclick="pilihMetodePOS('Transfer')" id="btn-m-Transfer" class="py-2.5 rounded-lg border-2 border-slate-100 text-slate-500 font-bold text-xs transition">Transfer</button><button onclick="pilihMetodePOS('Kredit')" id="btn-m-Kredit" class="py-2.5 rounded-lg border-2 border-slate-100 text-slate-500 font-bold text-xs transition">Kredit / SO</button></div> <button id="btn-show-qris" onclick="tampilkanQrisBayar()" class="hidden w-full border-2 border-emerald-500 text-emerald-600 font-bold py-2.5 rounded-xl mb-3 hover:bg-emerald-50 transition"><i class="fa-solid fa-qrcode mr-2"></i> Tampilkan QRIS Pelanggan</button> <label class="flex items-center gap-2 mb-6 cursor-pointer bg-orange-50 border border-orange-100 p-3 rounded-xl"><input type="checkbox" id="pos-is-so" onchange="state.isSO=this.checked" class="w-4 h-4 rounded text-orange-600"><span class="text-xs font-bold text-orange-700">Tandai sebagai Pesanan (SO)</span></label> <div id="area-bayar" class="mt-auto"><button onclick="prosesCheckoutPOS()" id="btn-checkout" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 rounded-xl shadow-lg transition text-base"><i class="fa-solid fa-check-circle mr-2"></i> BAYAR SEKARANG</button></div> <div id="area-setelah-bayar" class="hidden mt-auto flex-col gap-2"><button onclick="cetakUlangStruk()" class="w-full bg-blue-500 text-white font-black py-3 rounded-xl shadow-md transition hover:bg-blue-600"><i class="fa-solid fa-print mr-2"></i> Cetak Struk</button><button onclick="salinTeksStruk()" class="w-full bg-indigo-50 text-indigo-700 font-black py-3 rounded-xl shadow-md transition hover:bg-indigo-100"><i class="fa-solid fa-copy text-lg mr-2"></i> Salin Struk (Copy API)</button><button onclick="bukaModalWA()" class="w-full bg-emerald-500 text-white font-black py-3 rounded-xl shadow-md transition hover:bg-emerald-600"><i class="fa-brands fa-whatsapp text-lg mr-2"></i> Kirim WhatsApp</button><button onclick="resetKasir()" class="w-full bg-slate-200 text-slate-700 font-black py-3 rounded-xl mt-3 shadow transition hover:bg-slate-300"><i class="fa-solid fa-rotate-right mr-2"></i> Transaksi Baru</button></div> </div> </div> </div> <div id="modal-cari-pos" class="fixed inset-0 bg-black/60 z-50 hidden items-center justify-center p-4"><div class="bg-white rounded-2xl w-full max-w-lg h-[80vh] flex flex-col overflow-hidden shadow-2xl"><div class="p-4 border-b flex justify-between items-center"><h3 class="font-black text-lg">Pilih Produk</h3><button onclick="document.getElementById('modal-cari-pos').classList.add('hidden')" class="text-red-500"><i class="fa-solid fa-xmark text-xl"></i></button></div><div class="p-4"><input type="text" id="pos-cari-input" onkeyup="renderListCariPOS()" class="w-full border p-3 rounded-xl font-bold bg-slate-50 outline-none focus:border-blue-500" placeholder="Ketik nama produk..."></div><div id="pos-hasil-cari" class="flex-1 overflow-y-auto p-2 space-y-2"></div></div></div> `; }
+function viewPOS() { return ` <div class="flex flex-col lg:flex-row gap-4 h-full"> <div class="w-full lg:w-2/3 flex flex-col gap-4"> <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex gap-2"> <div class="relative flex-1"><i class="fa-solid fa-barcode absolute left-4 top-3.5 text-slate-400"></i><input type="text" id="pos-barcode" onkeypress="handleBarcodePOS(event)" class="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 p-3 pl-11 rounded-xl outline-none font-bold text-sm" placeholder="Scan Barcode / ID..." autocomplete="off"></div> <button onclick="bukaKamera('pos')" class="bg-blue-600 text-white w-12 h-12 rounded-xl shadow hover:bg-blue-700 transition flex items-center justify-center"><i class="fa-solid fa-camera text-xl"></i></button> <button onclick="cariManualPOS()" class="bg-orange-500 text-white px-5 rounded-xl font-bold shadow-md hover:bg-orange-600 transition"><i class="fa-solid fa-magnifying-glass"></i> Cari</button> </div> <div id="pos-error" class="hidden text-xs font-bold text-red-500 bg-red-50 p-2 rounded-lg text-center border border-red-100"></div> <div class="bg-white flex-1 rounded-2xl shadow-sm border border-slate-100 flex flex-col overflow-hidden min-h-[300px]"> <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50"><h3 class="font-black text-slate-800 text-sm">Item Keranjang</h3><span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-md font-bold"><span id="pos-jml-item">0</span> Item</span></div> <div id="pos-cart-list" class="flex-1 overflow-y-auto p-2 space-y-2"></div> </div> </div> <div class="w-full lg:w-1/3 flex flex-col gap-4"> <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col h-full relative"> <p class="text-[10px] font-bold text-slate-400 mb-1">PILIH PELANGGAN</p> <select id="pos-pelanggan" class="w-full border border-slate-200 p-3 rounded-xl mb-6 bg-slate-50 font-bold text-sm outline-none focus:border-blue-500"><option value="UMUM">Pelanggan UMUM</option></select> <div class="bg-slate-900 text-white p-5 rounded-xl text-center mb-6 shadow-inner"><div class="flex justify-between text-xs text-slate-400 font-bold mb-1 border-b border-slate-700 pb-2 items-center"><span>Subtotal:</span><span id="pos-subtotal-rp">Rp 0</span></div><div class="flex justify-between items-center text-xs text-orange-400 font-bold mb-1 border-b border-slate-700 pb-2 pt-1"><span>Diskon (Rp):</span><input type="text" inputmode="numeric" id="pos-input-diskon" value="0" onkeyup="formatInputRibuan(this); renderKeranjangPOS()" onchange="formatInputRibuan(this); renderKeranjangPOS()" class="w-28 bg-slate-800 border border-slate-600 focus:border-orange-500 text-right p-1.5 rounded outline-none text-orange-400 font-black"></div><div class="flex justify-between text-xs text-red-400 font-bold mb-2 pt-1 items-center"><span>Pajak PPN:</span><span id="pos-pajak-rp">+ Rp 0</span></div><p class="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-widest mt-2">Total Tagihan Akhir</p><p class="font-black text-3xl md:text-4xl tracking-tight text-emerald-400" id="pos-total-rp">Rp 0</p></div> <p class="text-[10px] font-bold text-slate-400 mb-2 uppercase">Metode Pembayaran</p> <div class="grid grid-cols-2 gap-2 mb-4"><button onclick="pilihMetodePOS('Tunai')" id="btn-m-Tunai" class="py-2.5 rounded-lg border-2 border-blue-600 bg-blue-50 text-blue-700 font-bold text-xs transition">Tunai</button><button onclick="pilihMetodePOS('QRIS')" id="btn-m-QRIS" class="py-2.5 rounded-lg border-2 border-slate-100 text-slate-500 font-bold text-xs transition">QRIS</button><button onclick="pilihMetodePOS('Transfer')" id="btn-m-Transfer" class="py-2.5 rounded-lg border-2 border-slate-100 text-slate-500 font-bold text-xs transition">Transfer</button><button onclick="pilihMetodePOS('Kredit')" id="btn-m-Kredit" class="py-2.5 rounded-lg border-2 border-slate-100 text-slate-500 font-bold text-xs transition">Kredit / SO</button></div> <button id="btn-show-qris" onclick="tampilkanQrisBayar()" class="hidden w-full border-2 border-emerald-500 text-emerald-600 font-bold py-2.5 rounded-xl mb-3 hover:bg-emerald-50 transition"><i class="fa-solid fa-qrcode mr-2"></i> Tampilkan QRIS Pelanggan</button> <label class="flex items-center gap-2 mb-6 cursor-pointer bg-orange-50 border border-orange-100 p-3 rounded-xl"><input type="checkbox" id="pos-is-so" onchange="state.isSO=this.checked" class="w-4 h-4 rounded text-orange-600"><span class="text-xs font-bold text-orange-700">Tandai sebagai Pesanan (SO)</span></label> <div id="area-bayar" class="mt-auto"><button onclick="prosesCheckoutPOS()" id="btn-checkout" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 rounded-xl shadow-lg transition text-base"><i class="fa-solid fa-check-circle mr-2"></i> BAYAR SEKARANG</button></div> <div id="area-setelah-bayar" class="hidden mt-auto flex-col gap-2"><button onclick="cetakUlangStruk()" class="w-full bg-blue-500 text-white font-black py-3 rounded-xl shadow-md transition hover:bg-blue-600"><i class="fa-solid fa-print mr-2"></i> Cetak Struk</button><button onclick="salinTeksStruk()" class="w-full bg-indigo-50 text-indigo-700 font-black py-3 rounded-xl shadow-md transition hover:bg-indigo-100"><i class="fa-solid fa-copy text-lg mr-2"></i> Salin Struk (Copy API)</button><button onclick="bukaModalWA()" class="w-full bg-emerald-500 text-white font-black py-3 rounded-xl shadow-md transition hover:bg-emerald-600"><i class="fa-brands fa-whatsapp text-lg mr-2"></i> Kirim WhatsApp</button><button onclick="resetKasir()" class="w-full bg-slate-200 text-slate-700 font-black py-3 rounded-xl mt-3 shadow transition hover:bg-slate-300"><i class="fa-solid fa-rotate-right mr-2"></i> Transaksi Baru</button></div> </div> </div> </div> <div id="modal-cari-pos" class="fixed inset-0 bg-black/60 z-50 hidden items-center justify-center p-4"><div class="bg-white rounded-2xl w-full max-w-lg h-[80vh] flex flex-col overflow-hidden shadow-2xl"><div class="p-4 border-b flex justify-between items-center"><h3 class="font-black text-lg">Pilih Produk</h3><button onclick="document.getElementById('modal-cari-pos').classList.add('hidden')" class="text-red-500"><i class="fa-solid fa-xmark text-xl"></i></button></div><div class="p-4"><input type="text" id="pos-cari-input" onkeyup="renderListCariPOS()" class="w-full border p-3 rounded-xl font-bold bg-slate-50 outline-none focus:border-blue-500" placeholder="Ketik nama produk..."></div><div id="pos-hasil-cari" class="flex-1 overflow-y-auto p-2 space-y-2"></div></div></div> `; }
 function setPilihanPelanggan() { if(!document.getElementById('pos-pelanggan')) return; let html = `<option value="UMUM">Pelanggan UMUM</option>`; if(state.data.pelanggan) { state.data.pelanggan.forEach(p => { html += `<option value="${p.ID_Pelanggan}">${p.Nama_Pelanggan}</option>`; }); } document.getElementById('pos-pelanggan').innerHTML = html; }
 function pilihMetodePOS(m) { state.metodeBayar = m; ['Tunai','QRIS','Transfer','Kredit'].forEach(x => { let b = document.getElementById('btn-m-'+x); if(b) b.className = "py-2.5 rounded-lg border-2 border-slate-100 text-slate-500 font-bold text-xs transition"; }); let sel = document.getElementById('btn-m-'+m); if(sel) sel.className = "py-2.5 rounded-lg border-2 border-blue-600 bg-blue-50 text-blue-700 font-bold text-xs transition"; if (m === 'QRIS') { document.getElementById('btn-show-qris').classList.remove('hidden'); } else { document.getElementById('btn-show-qris').classList.add('hidden'); } }
 function handleBarcodePOS(e) { 
@@ -864,8 +868,8 @@ function renderKeranjangPOS() {
   
   // Kalkulasi Diskon Baru
   let elDiskon = document.getElementById('pos-input-diskon');
-  let diskonNominal = elDiskon ? (parseFloat(elDiskon.value) || 0) : 0;
-  if(diskonNominal > subtotal) { diskonNominal = subtotal; if(elDiskon) elDiskon.value = diskonNominal; } // Cegah minus
+  let diskonNominal = elDiskon ? parseAngka(elDiskon.value) : 0;
+  if(diskonNominal > subtotal) { diskonNominal = subtotal; if(elDiskon) elDiskon.value = diskonNominal.toLocaleString('id-ID'); } // Cegah minus
   
   let subtotalSetelahDiskon = subtotal - diskonNominal;
   let pajakPersen = parseFloat(localStorage.getItem('sanstech_pajak') || 0); 
@@ -1181,8 +1185,8 @@ function viewProduk() {
               <div class="md:col-span-2"><label class="text-[10px] font-bold text-slate-500 uppercase">Kategori</label><select id="prd-kat" class="w-full border border-slate-200 p-2.5 rounded-lg font-bold outline-none focus:border-blue-500 bg-white">${opsiKatHtml}</select></div>
               <div class="md:col-span-2"><label class="text-[10px] font-bold text-slate-500 uppercase">Warna (Opsional)</label><input type="text" id="prd-warna" class="w-full border border-slate-200 p-2.5 rounded-lg font-bold outline-none focus:border-blue-500 bg-white" placeholder="Contoh: Hitam"></div>
               <div class="md:col-span-2"><label class="text-[10px] font-bold text-slate-500 uppercase">Satuan</label><input type="text" id="prd-sat" class="w-full border border-slate-200 p-2.5 rounded-lg font-bold outline-none focus:border-blue-500 bg-white"></div>
-              <div class="admin-only md:col-span-2"><label class="text-[10px] font-bold text-slate-500 uppercase">Harga Beli (Modal)</label><input type="number" id="prd-beli" class="w-full border border-slate-200 p-2.5 rounded-lg font-bold outline-none focus:border-blue-500 bg-white"></div>
-              <div class="md:col-span-2"><label class="text-[10px] font-bold text-slate-500 uppercase">Harga Jual</label><input type="number" id="prd-jual" class="w-full border border-slate-200 p-2.5 rounded-lg font-bold outline-none focus:border-blue-500 bg-white"></div>
+              <div class="admin-only md:col-span-2"><label class="text-[10px] font-bold text-slate-500 uppercase">Harga Beli (Modal)</label><input type="text" inputmode="numeric" onkeyup="formatInputRibuan(this)" id="prd-beli" class="w-full border border-slate-200 p-2.5 rounded-lg font-bold outline-none focus:border-blue-500 bg-white"></div>
+              <div class="md:col-span-2"><label class="text-[10px] font-bold text-slate-500 uppercase">Harga Jual</label><input type="text" inputmode="numeric" onkeyup="formatInputRibuan(this)" id="prd-jual" class="w-full border border-slate-200 p-2.5 rounded-lg font-bold outline-none focus:border-blue-500 bg-white"></div>
               <div class="admin-only md:col-span-1"><label class="text-[10px] font-bold text-slate-500 uppercase">Stok Awal</label><input type="number" id="prd-stok" class="w-full border border-slate-200 p-2.5 rounded-lg font-bold outline-none focus:border-blue-500 bg-white"></div>
               <div class="md:col-span-1"><label class="text-[10px] font-bold text-slate-500 uppercase">Stok Min</label><input type="number" id="prd-minstok" value="0" class="w-full border border-slate-200 p-2.5 rounded-lg font-bold outline-none focus:border-blue-500 bg-white"></div>
               <div class="md:col-span-6 bg-blue-50 p-3 rounded-xl border border-blue-200 shadow-inner admin-only">
@@ -1280,7 +1284,7 @@ function bukaFormProduk(isEdit, idProduk) {
             if(!listKat.includes(p.Kategori)) document.getElementById('prd-kat').innerHTML += `<option value="${p.Kategori}">${p.Kategori}</option>`;
             document.getElementById('prd-kat').value = p.Kategori || ""; 
             document.getElementById('prd-warna').value = p.Warna || "";
-            document.getElementById('prd-beli').value = p.Harga_Beli || ""; document.getElementById('prd-jual').value = p.Harga_Jual || ""; 
+            document.getElementById('prd-beli').value = p.Harga_Beli ? parseInt(p.Harga_Beli).toLocaleString('id-ID') : ""; document.getElementById('prd-jual').value = p.Harga_Jual ? parseInt(p.Harga_Jual).toLocaleString('id-ID') : ""; 
             document.getElementById('prd-minstok').value = p.Stok_Minimum || "0"; 
             document.getElementById('prd-stok').value = p.Stok_Saat_Ini || ""; document.getElementById('prd-sat').value = p.Satuan || ""; 
             document.getElementById('prd-stok').readOnly = true; 
@@ -1322,8 +1326,8 @@ async function simpanFormProduk() {
             Supplier: supVal,
             Kategori: document.getElementById('prd-kat').value, 
             Warna: document.getElementById('prd-warna').value, 
-            Harga_Beli: document.getElementById('prd-beli').value, 
-            Harga_Jual: document.getElementById('prd-jual').value, 
+            Harga_Beli: parseAngka(document.getElementById('prd-beli').value), 
+            Harga_Jual: parseAngka(document.getElementById('prd-jual').value), 
             Diskon: 0, // <--- Diset 0 paten agar data GSheet tetap utuh
             Stok_Saat_Ini: document.getElementById('prd-stok').value, 
             Stok_Minimum: document.getElementById('prd-minstok').value, 
@@ -2173,7 +2177,7 @@ function exportDataCSV(tipe) {
     let csv = "\uFEFF"; 
     let fileName = ""; 
     
-    // Helper untuk mengamankan teks dari koma agar tidak merusak kolom Excel
+    // Helper untuk mengamankan teks dari koma/titik koma agar tidak merusak kolom Excel
     const esc = (v) => {
         if (v === null || v === undefined) return '""';
         return '"' + String(v).replace(/"/g, '""') + '"';
@@ -2181,17 +2185,17 @@ function exportDataCSV(tipe) {
 
     if(tipe === 'penjualan') { 
         if(!state.data.penjualan || state.data.penjualan.length === 0) return showInlineNotif('error', 'Data kosong!'); 
-        csv += "Invoice,Waktu,Pelanggan,Kasir,Cabang,Status,Nama Produk,Kategori,Harga Satuan,Qty,Total Harga Item,Metode Bayar\n"; 
+        csv += "Invoice;Waktu;Pelanggan;Kasir;Cabang;Status;Nama Produk;Kategori;Harga Satuan;Qty;Total Harga Item;Metode Bayar\n"; 
         state.data.penjualan.forEach(p => { 
             let dts = state.data.penjualan_detail ? state.data.penjualan_detail.filter(d => d.ID_Invoice === p.ID_Invoice) : [];
             if(dts.length === 0) {
-                 csv += `${esc(p.ID_Invoice)},${esc(p.Waktu)},${esc(p.ID_Pelanggan)},${esc(p.Kasir)},${esc(p.Cabang||state.cabang)},${esc(p.Status)},${esc("-")},${esc("-")},${esc(0)},${esc(0)},${esc(p.Total_Akhir)},${esc(p.Metode_Pembayaran)}\n`;
+                 csv += `${esc(p.ID_Invoice)};${esc(p.Waktu)};${esc(p.ID_Pelanggan)};${esc(p.Kasir)};${esc(p.Cabang||state.cabang)};${esc(p.Status)};${esc("-")};${esc("-")};${esc(0)};${esc(0)};${esc(p.Total_Akhir)};${esc(p.Metode_Pembayaran)}\n`;
             } else {
                  dts.forEach(d => {
                       let prd = state.data.produk.find(x => x.ID_Produk === d.ID_Produk);
                       let namaPrd = prd ? prd.Nama_Produk : d.ID_Produk; 
                       let katPrd = prd ? prd.Kategori : "Lainnya";
-                      csv += `${esc(p.ID_Invoice)},${esc(p.Waktu)},${esc(p.ID_Pelanggan)},${esc(p.Kasir)},${esc(p.Cabang||state.cabang)},${esc(p.Status)},${esc(namaPrd)},${esc(katPrd)},${esc(d.Harga_Satuan||0)},${esc(d.Qty||0)},${esc(d.Total_Harga||0)},${esc(p.Metode_Pembayaran)}\n`;
+                      csv += `${esc(p.ID_Invoice)};${esc(p.Waktu)};${esc(p.ID_Pelanggan)};${esc(p.Kasir)};${esc(p.Cabang||state.cabang)};${esc(p.Status)};${esc(namaPrd)};${esc(katPrd)};${esc(d.Harga_Satuan||0)};${esc(d.Qty||0)};${esc(d.Total_Harga||0)};${esc(p.Metode_Pembayaran)}\n`;
                  });
             }
         }); 
@@ -2199,65 +2203,65 @@ function exportDataCSV(tipe) {
     } 
     else if(tipe === 'pembelian') { 
         if(!state.data.pembelian || state.data.pembelian.length === 0) return showInlineNotif('error', 'Data kosong!'); 
-        csv += "PO,Waktu,Supplier,Total Tagihan,Status Bayar,Admin\n"; 
+        csv += "PO;Waktu;Supplier;Total Tagihan;Status Bayar;Admin\n"; 
         state.data.pembelian.forEach(p => { 
             let sup = state.data.supplier.find(s => s.ID_Supplier === p.ID_Supplier);
             let namaSup = sup ? sup.Nama_Supplier : p.ID_Supplier;
-            csv += `${esc(p.ID_PO)},${esc(p.Waktu)},${esc(namaSup)},${esc(p.Total_Tagihan)},${esc(p.Status_Bayar)},${esc(p.Admin)}\n`; 
+            csv += `${esc(p.ID_PO)};${esc(p.Waktu)};${esc(namaSup)};${esc(p.Total_Tagihan)};${esc(p.Status_Bayar)};${esc(p.Admin)}\n`; 
         }); 
         fileName = "Data_Pembelian.csv"; 
     } 
     else if(tipe === 'stok' || tipe === 'stok_mutasi') { 
         if(!state.data.stok || state.data.stok.length === 0) return showInlineNotif('error', 'Data kosong!'); 
-        csv += "ID Stok,Waktu,ID Produk,Nama Produk,Pergerakan,Jumlah,Keterangan,Cabang\n"; 
+        csv += "ID Stok;Waktu;ID Produk;Nama Produk;Pergerakan;Jumlah;Keterangan;Cabang\n"; 
         state.data.stok.forEach(p => { 
             let prd = state.data.produk.find(x => x.ID_Produk === p.ID_Produk);
             let namaPrd = prd ? prd.Nama_Produk : "-"; 
-            csv += `${esc(p.ID_Stok)},${esc(p.Waktu)},${esc(p.ID_Produk)},${esc(namaPrd)},${esc(p.Jenis_Pergerakan)},${esc(p.Jumlah)},${esc(p.Keterangan)},${esc(p.Cabang||state.cabang)}\n`; 
+            csv += `${esc(p.ID_Stok)};${esc(p.Waktu)};${esc(p.ID_Produk)};${esc(namaPrd)};${esc(p.Jenis_Pergerakan)};${esc(p.Jumlah)};${esc(p.Keterangan)};${esc(p.Cabang||state.cabang)}\n`; 
         }); 
         fileName = "Data_Mutasi_Stok.csv"; 
     } 
     else if(tipe === 'stok_pantau') { 
         if(!state.data.produk || state.data.produk.length === 0) return showInlineNotif('error', 'Data kosong!'); 
-        csv += "ID Produk,Barcode,Nama Produk,Kategori,Cabang,Stok Saat Ini,Satuan\n"; 
+        csv += "ID Produk;Barcode;Nama Produk;Kategori;Cabang;Stok Saat Ini;Satuan\n"; 
         state.data.produk.forEach(p => { 
-            csv += `${esc(p.ID_Produk)},${esc(p.Barcode)},${esc(p.Nama_Produk)},${esc(p.Kategori)},${esc(p.Cabang||'Pusat')},${esc(p.Stok_Saat_Ini)},${esc(p.Satuan)}\n`; 
+            csv += `${esc(p.ID_Produk)};${esc(p.Barcode)};${esc(p.Nama_Produk)};${esc(p.Kategori)};${esc(p.Cabang||'Pusat')};${esc(p.Stok_Saat_Ini)};${esc(p.Satuan)}\n`; 
         }); 
         fileName = "Data_Sisa_Stok.csv"; 
     } 
     else if(tipe === 'keuangan') { 
         if(!state.data.keuangan || state.data.keuangan.length === 0) return showInlineNotif('error', 'Data kosong!'); 
-        csv += "Waktu,Ref/ID,Tipe,Nominal,Keterangan,Kasir,Cabang\n"; 
+        csv += "Waktu;Ref/ID;Tipe;Nominal;Keterangan;Kasir;Cabang\n"; 
         state.data.keuangan.forEach(p => { 
-            csv += `${esc(p.Waktu)},${esc(p.ID_Transaksi)},${esc(p.Jenis_Arus)},${esc(p.Nominal)},${esc(p.Keterangan)},${esc(p.Kasir)},${esc(p.Cabang||state.cabang)}\n`; 
+            csv += `${esc(p.Waktu)};${esc(p.ID_Transaksi)};${esc(p.Jenis_Arus)};${esc(p.Nominal)};${esc(p.Keterangan)};${esc(p.Kasir)};${esc(p.Cabang||state.cabang)}\n`; 
         }); 
         fileName = "Data_ArusKas.csv"; 
     } 
     else if(tipe === 'produk') {
         if(!state.data.produk || state.data.produk.length === 0) return showInlineNotif('error', 'Data kosong!'); 
-        csv += "ID Produk,Barcode,Nama Produk,Supplier,Kategori,Warna,Satuan,Harga Beli,Harga Jual,Stok,Min Stok,Cabang\n"; 
+        csv += "ID Produk;Barcode;Nama Produk;Supplier;Kategori;Warna;Satuan;Harga Beli;Harga Jual;Stok;Min Stok;Cabang\n"; 
         state.data.produk.forEach(p => { 
-            csv += `${esc(p.ID_Produk)},${esc(p.Barcode)},${esc(p.Nama_Produk)},${esc(p.Supplier||'-')},${esc(p.Kategori)},${esc(p.Warna)},${esc(p.Satuan)},${esc(p.Harga_Beli)},${esc(p.Harga_Jual)},${esc(p.Stok_Saat_Ini)},${esc(p.Stok_Minimum)},${esc(p.Cabang||'Pusat')}\n`; 
+            csv += `${esc(p.ID_Produk)};${esc(p.Barcode)};${esc(p.Nama_Produk)};${esc(p.Supplier||'-')};${esc(p.Kategori)};${esc(p.Warna)};${esc(p.Satuan)};${esc(p.Harga_Beli)};${esc(p.Harga_Jual)};${esc(p.Stok_Saat_Ini)};${esc(p.Stok_Minimum)};${esc(p.Cabang||'Pusat')}\n`; 
         }); 
         fileName = "Data_Master_Produk.csv"; 
     }
     else if(tipe === 'pelanggan') {
         if(!state.data.pelanggan || state.data.pelanggan.length === 0) return showInlineNotif('error', 'Data kosong!'); 
-        csv += "ID Pelanggan,Nama Pelanggan,No HP,Grup,Alamat,Poin,Piutang\n"; 
+        csv += "ID Pelanggan;Nama Pelanggan;No HP;Grup;Alamat;Poin;Piutang\n"; 
         state.data.pelanggan.forEach(p => { 
-            csv += `${esc(p.ID_Pelanggan)},${esc(p.Nama_Pelanggan)},${esc(p.No_HP)},${esc(p.Grup_Pelanggan)},${esc(p.Alamat)},${esc(p.Poin_Member)},${esc(p.Piutang)}\n`; 
+            csv += `${esc(p.ID_Pelanggan)};${esc(p.Nama_Pelanggan)};${esc(p.No_HP)};${esc(p.Grup_Pelanggan)};${esc(p.Alamat)};${esc(p.Poin_Member)};${esc(p.Piutang)}\n`; 
         }); 
         fileName = "Data_Pelanggan.csv"; 
     }
     else if(tipe === 'supplier') {
         if(!state.data.supplier || state.data.supplier.length === 0) return showInlineNotif('error', 'Data kosong!'); 
-        csv += "ID Supplier,Nama Supplier,Kontak,Alamat,Hutang\n"; 
+        csv += "ID Supplier;Nama Supplier;Kontak;Alamat;Hutang\n"; 
         state.data.supplier.forEach(p => { 
             // Kalkulasi hutang dari riwayat pembelian
             let riwayat = state.data.pembelian ? state.data.pembelian.filter(t => t.ID_Supplier === p.ID_Supplier) : [];
             let totalHutangReal = 0;
             riwayat.forEach(r => { if(r.Status_Bayar === 'HUTANG') totalHutangReal += parseFloat(r.Total_Tagihan || 0); });
-            csv += `${esc(p.ID_Supplier)},${esc(p.Nama_Supplier)},${esc(p.Kontak)},${esc(p.Alamat)},${esc(totalHutangReal)}\n`; 
+            csv += `${esc(p.ID_Supplier)};${esc(p.Nama_Supplier)};${esc(p.Kontak)};${esc(p.Alamat)};${esc(totalHutangReal)}\n`; 
         }); 
         fileName = "Data_Supplier.csv"; 
     }
@@ -2308,7 +2312,7 @@ function viewKeuangan() {
       <h4 class="font-black text-slate-700 mb-3 text-xs uppercase"><i class="fa-solid fa-circle-plus mr-1 text-blue-600"></i> Catat Pengeluaran Operasional Baru</h4>
       <div class="flex flex-wrap gap-3 items-end">
         <div class="flex-1 min-w-[200px]"><label class="text-[10px] font-bold text-slate-400 uppercase">Keterangan / Keperluan</label><input type="text" id="ex-ket" placeholder="Cth: Bayar Listrik, ATK, Bensin..." class="w-full border border-slate-200 p-2.5 rounded-xl mt-1 font-bold outline-none focus:border-blue-500 bg-white"></div>
-        <div class="w-40"><label class="text-[10px] font-bold text-slate-400 uppercase">Nominal (Rp)</label><input type="number" id="ex-nom" placeholder="0" class="w-full border border-slate-200 p-2.5 rounded-xl mt-1 font-bold outline-none focus:border-blue-500 bg-white"></div>
+        <div class="w-40"><label class="text-[10px] font-bold text-slate-400 uppercase">Nominal (Rp)</label><input type="text" inputmode="numeric" onkeyup="formatInputRibuan(this)" id="ex-nom" placeholder="0" class="w-full border border-slate-200 p-2.5 rounded-xl mt-1 font-bold outline-none focus:border-blue-500 bg-white"></div>
         <button onclick="simpanPengeluaran()" id="btn-submit-ex" class="bg-red-500 hover:bg-red-600 text-white font-bold px-6 py-2.5 rounded-xl shadow transition"><i class="fa-solid fa-minus mr-1"></i> Catat Pengeluaran</button>
       </div>
     </div>
@@ -2383,8 +2387,8 @@ function filterKeuanganUI() {
 }
 async function simpanPengeluaran() { 
     let ket = document.getElementById('ex-ket').value.trim(); 
-    let nom = document.getElementById('ex-nom').value; 
-    if(!ket || !nom || parseFloat(nom) <= 0) { showInlineNotif('error','Isi Keterangan dan Nominal dengan benar!'); return; } 
+    let nom = parseAngka(document.getElementById('ex-nom').value); 
+    if(!ket || !nom || nom <= 0) { showInlineNotif('error','Isi Keterangan dan Nominal dengan benar!'); return; } 
     let btn = document.getElementById('btn-submit-ex'); btn.innerText = "Menyimpan..."; btn.disabled = true; 
     let res = await requestAPIWithAuth('catatPengeluaranOperasional', { keterangan: ket, nominal: nom, kasir: state.user, cabang: state.cabang }); 
     if(res.status) { 
