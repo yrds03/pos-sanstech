@@ -1170,6 +1170,7 @@ function viewProduk() {
       <div class="flex justify-between items-center mb-6">
           <h3 class="font-black text-lg text-slate-800 flex items-center">Master Data Produk ${filterCabangHtml}</h3>
           <div class="flex items-center gap-2">
+              <button onclick="triggerImportProduk()" class="bg-indigo-50 text-indigo-600 hover:bg-indigo-500 hover:text-white font-bold p-2.5 rounded-xl shadow-sm transition admin-only" title="Import CSV (Bulk Upload)"><i class="fa-solid fa-file-import"></i></button>
               <button onclick="exportDataCSV('produk')" class="bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white font-bold p-2.5 rounded-xl shadow-sm transition" title="Export Excel"><i class="fa-solid fa-file-excel"></i></button>
               <button onclick="bukaFormProduk(false)" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-xl shadow-md transition text-sm flex items-center admin-only"><i class="fa-solid fa-plus mr-2"></i> Produk Baru</button>
           </div>
@@ -1363,6 +1364,116 @@ async function eksekusiHapusProduk() {
     } else {
         showInlineNotif('error', res.msg);
     }
+}
+
+// FUNGSI IMPORT BULK PRODUK DARI CSV
+function triggerImportProduk() {
+    let fileInput = document.getElementById('input-import-csv');
+    if(!fileInput) {
+        fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.id = 'input-import-csv';
+        fileInput.accept = '.csv';
+        fileInput.style.display = 'none';
+        fileInput.onchange = prosesImportCSVProduk;
+        document.body.appendChild(fileInput);
+    }
+    fileInput.click();
+}
+
+async function prosesImportCSVProduk(event) {
+    let file = event.target.files[0];
+    if(!file) return;
+
+    let reader = new FileReader();
+    reader.onload = async function(e) {
+        let text = e.target.result;
+        let rows = text.split('\n').map(row => row.trim()).filter(row => row);
+        if(rows.length < 2) {
+            showInlineNotif('error', 'File CSV kosong atau format salah!');
+            return;
+        }
+
+        let loader = document.getElementById('global-loader');
+        if (loader) {
+            loader.querySelector('p').innerText = "MENGIMPORT DATA...";
+            loader.querySelectorAll('p')[1].innerText = "Memproses baris 1 dari " + (rows.length - 1);
+            loader.classList.replace('hidden', 'flex');
+        }
+
+        let successCount = 0;
+        let failCount = 0;
+
+        // Mulai dari index 1 karena index 0 adalah Header Kolom (Abaikan ID Produk)
+        for(let i = 1; i < rows.length; i++) {
+            // Pisahkan dengan titik koma (;), abaikan titik koma yang terkurung tanda kutip ganda
+            let cols = rows[i].split(/;(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+            cols = cols.map(c => c.replace(/^"|"$/g, '').trim());
+
+            if(cols.length < 11) continue; // Abaikan baris yang tidak lengkap
+
+            // Pemetaan berdasar format Export:
+            // 0:ID Produk, 1:Barcode, 2:Nama Produk, 3:Supplier, 4:Kategori, 
+            // 5:Warna, 6:Satuan, 7:Harga Beli, 8:Harga Jual, 9:Stok, 10:Min Stok, 11:Cabang
+
+            let barcodeVal = cols[1] || "";
+            let namaVal = cols[2] || "";
+
+            if (!namaVal) continue; // Nama wajib diisi
+
+            // Cek duplikat Barcode (Persis logika simpan produk baru)
+            if (barcodeVal !== "") {
+                let cekDuplikat = state.data.produk.find(p => String(p.Barcode) === barcodeVal);
+                if (cekDuplikat) {
+                    failCount++;
+                    continue; // Lewati row ini jika duplikat
+                }
+            }
+
+            let obj = {
+                Barcode: barcodeVal,
+                Nama_Produk: namaVal,
+                Supplier: cols[3] || "-",
+                Kategori: cols[4] || "Umum",
+                Warna: cols[5] || "",
+                Satuan: cols[6] || "Pcs",
+                Harga_Beli: parseAngka(cols[7] || "0"),
+                Harga_Jual: parseAngka(cols[8] || "0"),
+                Diskon: 0,
+                Stok_Saat_Ini: parseFloat(cols[9]) || 0,
+                Stok_Minimum: parseFloat(cols[10]) || 0,
+                Cabang: cols[11] || state.cabang
+            };
+
+            // Kirim satu per satu menggunakan API bawaan (Aman untuk Script Google)
+            let res = await requestAPIWithAuth('crudDataMaster', {modul: 'Produk', action: 'CREATE', key: 'ID_Produk', id: '', obj: obj});
+            if(res.status) {
+                // Simpan sementara di memori browser untuk mencegah CSV menginput duplikat di dirinya sendiri
+                state.data.produk.push(obj); 
+                successCount++;
+            } else {
+                failCount++;
+            }
+
+            // Update progres berjalan di layar
+            if (loader) {
+                loader.querySelectorAll('p')[1].innerText = `Memproses baris ${i} dari ${rows.length - 1} ...`;
+            }
+        }
+
+        // Kembalikan teks asli loader dan tutup
+        if (loader) {
+            loader.querySelector('p').innerText = "SINKRONISASI...";
+            loader.querySelectorAll('p')[1].innerText = "Menyimpan & Menarik Data Terbaru";
+            loader.classList.replace('flex', 'hidden');
+        }
+
+        event.target.value = ''; // Reset input agar bisa dipakai unggah file yang sama lagi
+        
+        showInlineNotif(failCount === 0 ? 'success' : 'info', `Import CSV Selesai! Berhasil: ${successCount}, Ditolak/Duplikat: ${failCount}`);
+        syncDataLiveBackground(); // Refesh Tabel
+    };
+    reader.readAsText(file);
 }
 
 // ====================================================================
