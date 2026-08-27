@@ -405,7 +405,8 @@ function tutupModal() { document.getElementById('custom-modal').classList.replac
 let deferredPrompt;
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; document.getElementById('btn-install-app').classList.remove('hidden'); });
 document.getElementById('btn-install-app').addEventListener('click', async () => { if (deferredPrompt) { deferredPrompt.prompt(); const { outcome } = await deferredPrompt.userChoice; if (outcome === 'accepted') document.getElementById('btn-install-app').classList.add('hidden'); deferredPrompt = null; } });
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js?v=9').catch(err => console.log(err));
+
+// Registrasi SW statis v=9 dihapus agar tidak bentrok dengan fungsi cekUpdatePWA()
 
 let btDevice = null; let btCharacteristic = null;
 async function connectBluetoothNative() {
